@@ -21,6 +21,7 @@ package dao
 import (
 	"github.com/goodrain/rainbond/db/errors"
 	"github.com/goodrain/rainbond/db/model"
+	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/jinzhu/gorm"
 	pkgerr "github.com/pkg/errors"
 	"time"
@@ -54,6 +55,11 @@ func (c *VersionInfoDaoImpl) AddModel(mo model.Interface) error {
 	}
 	var oldResult model.VersionInfo
 	if ok := c.DB.Where("build_version=? and service_id=?", result.BuildVersion, result.ServiceID).Find(&oldResult).RecordNotFound(); ok {
+		revision, err := cleanupguard.NewActivationRevision()
+		if err != nil {
+			return err
+		}
+		result.ActivationRevision = revision
 		if err := c.DB.Create(result).Error; err != nil {
 			return err
 		}

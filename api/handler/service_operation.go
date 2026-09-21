@@ -29,6 +29,7 @@ import (
 	dbmodel "github.com/goodrain/rainbond/db/model"
 	"github.com/goodrain/rainbond/event"
 	gclient "github.com/goodrain/rainbond/mq/client"
+	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/goodrain/rainbond/util"
 	dmodel "github.com/goodrain/rainbond/worker/discover/model"
 	"github.com/jinzhu/gorm"
@@ -291,19 +292,24 @@ func (o *OperationHandler) RollBack(rollback model.RollbackInfoRequestStruct) (r
 	}
 	oldDeployVersion := service.DeployVersion
 	var rollbackFunc = func() {
-		service.DeployVersion = oldDeployVersion
-		_ = db.GetManager().TenantServiceDao().UpdateModel(service)
+		// Do not overwrite a newer operation if enqueueing this rollback failed.
+		if _, restoreErr := cleanupguard.SelectRollbackVersion(db.GetManager().Begin, service.TenantID,
+			service.ServiceID, oldDeployVersion, rollback.EventID+"-undo", rollback.RollBackVersion); restoreErr != nil {
+			logrus.Warnf("failed to restore previous rollback target for component %s", service.ServiceID)
+		}
 	}
 
 	if service.DeployVersion == rollback.RollBackVersion {
 		logrus.Warningf("rollback version is same of current version")
 	}
-	service.DeployVersion = rollback.RollBackVersion
-	if err := db.GetManager().TenantServiceDao().UpdateModel(service); err != nil {
-		logrus.Errorf("update service %s version failure %s", rollback.ServiceID, err.Error())
-		re.ErrMsg = fmt.Sprintf("update service %s version failure", rollback.ServiceID)
+	previousVersion, err := cleanupguard.SelectRollbackVersion(db.GetManager().Begin, service.TenantID, service.ServiceID, rollback.RollBackVersion, rollback.EventID)
+	if err != nil {
+		re.ErrMsg = "rollback version is no longer available"
 		return
 	}
+	oldDeployVersion = previousVersion
+	service.DeployVersion = rollback.RollBackVersion
+
 	err = o.mqCli.SendBuilderTopic(gclient.TaskStruct{
 		TaskBody: dmodel.RollingUpgradeTaskBody{
 			TenantID:         service.TenantID,

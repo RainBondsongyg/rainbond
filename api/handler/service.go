@@ -62,6 +62,7 @@ import (
 	dbmodel "github.com/goodrain/rainbond/db/model"
 	"github.com/goodrain/rainbond/event"
 	gclient "github.com/goodrain/rainbond/mq/client"
+	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/goodrain/rainbond/pkg/generated/clientset/versioned"
 	core_util "github.com/goodrain/rainbond/util"
 	"github.com/goodrain/rainbond/worker/client"
@@ -3537,6 +3538,10 @@ func (s *ServiceAction) ListVersionInfo(serviceID string) (*apimodel.BuildListRe
 	result := &apimodel.BuildListRespVO{
 		DeployVersion: svc.DeployVersion,
 		List:          bversions,
+	}
+	// Legacy rows remain visible if inspection fails, but no retirement evidence is advertised.
+	if inspection, inspectErr := cleanupguard.InspectVersions(db.GetManager().Begin, serviceID); inspectErr == nil && inspection.CurrentVersion == svc.DeployVersion {
+		result.Retirement = inspection
 	}
 	return result, nil
 }

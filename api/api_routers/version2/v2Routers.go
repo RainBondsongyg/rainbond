@@ -668,6 +668,7 @@ func (v2 *V2) serviceRouter() chi.Router {
 	r.Get("/build-version/{build_version}", controller.GetManager().BuildVersionInfo)
 	r.Put("/build-version/{build_version}", controller.GetManager().BuildVersionInfo)
 	r.Get("/deployversion", controller.GetManager().GetDeployVersion)
+	r.Post("/build-version/{build_version}/retire", middleware.WrapEL(controller.GetManager().RetireBuildVersion, dbmodel.TargetTypeService, "cleanup-retire-buildversion", dbmodel.SYNEVENTTYPE, false))
 	r.Delete("/build-version/{build_version}", middleware.WrapEL(controller.GetManager().BuildVersionInfo, dbmodel.TargetTypeService, "delete-buildversion", dbmodel.SYNEVENTTYPE, false))
 	//应用分享
 	r.Post("/share", middleware.WrapEL(controller.GetManager().Share, dbmodel.TargetTypeService, "share-service", dbmodel.SYNEVENTTYPE, false))
