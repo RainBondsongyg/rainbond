@@ -5,14 +5,15 @@ import "time"
 // CleanupStorage is provisioned with a verified physical storage generation.
 // Migration alone never makes a storage ready for cleanup.
 type CleanupStorage struct {
-	MaintenanceOperationID string `gorm:"type:varchar(64);not null;default:''"`
-	PreviousMode           string `gorm:"type:varchar(24);not null;default:''"`
-	StorageID              string `gorm:"column:storage_id;type:varchar(64);primary_key"`
-	Generation             string `gorm:"type:varchar(64);not null"`
-	Mode                   string `gorm:"type:varchar(24);not null;default:'unverified'"`
-	Revision               uint64 `gorm:"not null;default:0"`
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
+	RegistrationFingerprint string `gorm:"type:varchar(64);not null;default:''"`
+	MaintenanceOperationID  string `gorm:"type:varchar(64);not null;default:''"`
+	PreviousMode            string `gorm:"type:varchar(24);not null;default:''"`
+	StorageID               string `gorm:"column:storage_id;type:varchar(64);primary_key"`
+	Generation              string `gorm:"type:varchar(64);not null"`
+	Mode                    string `gorm:"type:varchar(24);not null;default:'unverified'"`
+	Revision                uint64 `gorm:"not null;default:0"`
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 // TableName returns the storage coordination table.

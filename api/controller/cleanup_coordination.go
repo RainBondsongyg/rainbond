@@ -383,3 +383,22 @@ func (h *CleanupCoordinationHandler) FinishUpload(w http.ResponseWriter, r *http
 		Recorded bool `json:"recorded"`
 	}{1, true})
 }
+
+// StorageStatus exposes identity and enrollment state, never a writable override.
+func (h *CleanupCoordinationHandler) StorageStatus(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Generation string `json:"generation"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	observation, err := guard.InspectStorage(h.database(), chi.URLParam(r, "storage_id"), body.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int                      `json:"protocol"`
+		Storage  guard.StorageObservation `json:"storage"`
+	}{1, observation})
+}

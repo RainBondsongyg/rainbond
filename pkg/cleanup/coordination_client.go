@@ -31,12 +31,22 @@ type CoordinationClient struct {
 
 // NewCoordinationClient binds one trusted Region API origin. Plain HTTP must be
 // explicitly allowed for a trusted internal deployment or an isolated test.
-func NewCoordinationClient(endpoint, token string, allowHTTP bool) (*CoordinationClient, error) {
+func NewCoordinationClient(endpoint, token string, allowHTTP bool, transports ...http.RoundTripper) (*CoordinationClient, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || (u.Scheme != "https" && !(allowHTTP && u.Scheme == "http")) || token == "" || strings.ContainsAny(token, " \t\r\n") {
 		return nil, ErrCoordinationChanged
 	}
-	return &CoordinationClient{base: u.Scheme + "://" + u.Host, token: token, http: &http.Client{Timeout: 4 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	if len(transports) > 1 {
+		return nil, ErrCoordinationChanged
+	}
+	var transport http.RoundTripper
+	if len(transports) == 1 {
+		transport = transports[0]
+		if transport == nil {
+			return nil, ErrCoordinationChanged
+		}
+	}
+	return &CoordinationClient{base: u.Scheme + "://" + u.Host, token: token, http: &http.Client{Transport: transport, Timeout: 4 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
 type coordinationResponse struct {
@@ -48,6 +58,7 @@ type coordinationResponse struct {
 		State         string               `json:"state"`
 		Permit        string               `json:"permit"`
 		Binding       *CoordinationRequest `json:"binding"`
+		Storage       *StorageObservation  `json:"storage"`
 		Repository    string               `json:"repository"`
 		UploadID      string               `json:"upload_id"`
 	} `json:"bean"`
@@ -312,4 +323,22 @@ func (c *CoordinationClient) RecordUploadRequest(ctx context.Context, parent, r 
 		Outcome string              `json:"outcome"`
 	}{parent, r, outcome}
 	return c.record(ctx, parent, "upload/requests/finish", body)
+}
+
+// InspectStorage verifies the response belongs to the requested generation.
+func (c *CoordinationClient) InspectStorage(ctx context.Context, storage, generation string) (StorageObservation, error) {
+	if !coordinationIdentity.MatchString(storage) || !coordinationIdentity.MatchString(generation) {
+		return StorageObservation{}, ErrCoordinationChanged
+	}
+	response, err := c.callPath(ctx, "/v2/cleanup/stores/"+url.PathEscape(storage)+"/status", struct {
+		Generation string `json:"generation"`
+	}{generation})
+	if err != nil {
+		return StorageObservation{}, err
+	}
+	observed := response.Bean.Storage
+	if observed == nil || observed.StorageID != storage || observed.Generation != generation {
+		return StorageObservation{}, ErrCoordinationChanged
+	}
+	return *observed, nil
 }

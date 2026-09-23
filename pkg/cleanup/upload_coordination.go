@@ -52,7 +52,7 @@ func BindRegistryUpload(database *gorm.DB, r CoordinationRequest, repository, id
 	if err != nil {
 		return err
 	}
-	if store.Mode != "ready" && store.Mode != "draining" {
+	if store.Mode != "ready" && store.Mode != "draining" && store.Mode != "collecting" {
 		return ErrCoordinationBusy
 	}
 	op, err := uploadParent(tx, r)
@@ -123,7 +123,7 @@ func AcquireUploadRequest(database *gorm.DB, parent, r CoordinationRequest, clos
 	if err != nil {
 		return false, err
 	}
-	if store.Mode != "ready" && store.Mode != "draining" {
+	if store.Mode != "ready" && store.Mode != "draining" && store.Mode != "collecting" {
 		return false, ErrCoordinationBusy
 	}
 	root, err := uploadParent(tx, parent)

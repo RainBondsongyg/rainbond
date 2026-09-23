@@ -45,6 +45,7 @@
 | rainbond.builder.registered-worker-dispatch | 已注册 worker 分发时不再误报未知任务 | active | regression | builder/exector.exectorManager.RunTask | builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker |
 | rainbond.cleanup.coordinated-registry-delete-gc | Verify coordinated deletion and separate GC against isolated real Registry | active | integration | Region coordination API and Registry sidecar | api/controller/cleanup_registryproxy_test.go::TestCoordinatedRegistryRealDeletionAndGC |
 | rainbond.cleanup.coordination-route-auth | Require Region authentication for every coordination route | active | regression | /v2/cleanup/stores/{storage_id}/operations | api/api_routers/version2/cleanup_coordination_test.go::TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication |
+| rainbond.cleanup.coordinator-runtime | Run verified readiness and terminate the coordinator cleanly | active | regression | cmd/registry-coordinator.run | cmd/registry-coordinator/main_test.go::TestCoordinatorRunsReadinessAndStopsWithContext |
 | rainbond.cleanup.durable-coordination | Persist coordinated operations across restarts and conflicts | active | regression | pkg/cleanup.AcquireOperation | pkg/cleanup/coordination_test.go::TestPersistentCoordinationConflictsAndRecovery |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
@@ -53,6 +54,8 @@
 | rainbond.cleanup.registry-stream-admission | Require admission before forwarding mutations without credential leakage | active | regression | pkg/cleanup/registryproxy.Proxy.ServeHTTP | pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth |
 | rainbond.cleanup.registry-upload-lifecycle | Keep upload leases across parts and drain existing sessions safely | active | regression | pkg/cleanup.AcquireUploadRequest | pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts |
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
+| rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
+| rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
 | rainbond.cleanup.version-update-no-resurrection | Version callbacks preserve activation and never recreate retired records | active | regression | VersionInfoDaoImpl.UpdateModel | db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation |
 | rainbond.cleanup.vm-activation-dispatch | Do not deploy VM after version activation rejection | active | regression | exectorManager.buildFromVM | builder/exector/cleanup_activation_test.go::TestVMBuildCannotDispatchAfterActivationRejected |
@@ -924,6 +927,16 @@
 - 代码路径: `api/api_routers/version2/v2Routers.go`
 - 测试路径: `api/api_routers/version2/cleanup_coordination_test.go::TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication`
 
+### Run verified readiness and terminate the coordinator cleanly
+
+- Capability ID: `rainbond.cleanup.coordinator-runtime`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `cmd/registry-coordinator.run`
+- 代码路径: `cmd/registry-coordinator/main.go`
+- 测试路径: `cmd/registry-coordinator/main_test.go::TestCoordinatorRunsReadinessAndStopsWithContext`
+
 ### Persist coordinated operations across restarts and conflicts
 
 - Capability ID: `rainbond.cleanup.durable-coordination`
@@ -1003,6 +1016,26 @@
 - 业务入口: `pkg/cleanup.BeginDeletionAttempt`
 - 代码路径: `pkg/cleanup/deletion_attempt.go`
 - 测试路径: `pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified`
+
+### Collect writes during enrollment without granting cleanup
+
+- Capability ID: `rainbond.cleanup.storage-enrollment`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.RegisterStorage`
+- 代码路径: `pkg/cleanup/registration.go`
+- 测试路径: `pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion`
+
+### Bind storage identity atomically without replacing prior markers
+
+- Capability ID: `rainbond.cleanup.storage-identity`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup/registryproxy.InitializeStorageIdentity`
+- 代码路径: `pkg/cleanup/registryproxy/identity.go`
+- 测试路径: `pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten`
 
 ### Fence upgrade and rollback against version retirement
 

@@ -883,6 +883,7 @@ func (v2 *V2) cleanupCoordinationRouter() chi.Router {
 	r.Use(middleware.FullToken)
 	h := controller.NewCleanupCoordinationHandler()
 	r.Post("/stores/{storage_id}/operations", h.Acquire)
+	r.Post("/stores/{storage_id}/status", h.StorageStatus)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/registry-permit", h.RegistryPermit)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/attempt", h.BeginAttempt)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/attempt/complete", h.CompleteAttempt)

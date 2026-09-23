@@ -747,6 +747,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.coordinator-runtime",
+      "title": "Run verified readiness and terminate the coordinator cleanly",
+      "title_zh": "Run verified readiness and terminate the coordinator cleanly",
+      "interface_type": "workflow",
+      "interface": "cmd/registry-coordinator.run",
+      "code_paths": [
+        "cmd/registry-coordinator/main.go"
+      ],
+      "tests": [
+        {
+          "path": "cmd/registry-coordinator/main_test.go",
+          "selector": "TestCoordinatorRunsReadinessAndStopsWithContext"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.durable-coordination",
       "title": "Persist coordinated operations across restarts and conflicts",
       "title_zh": "Persist coordinated operations across restarts and conflicts",
@@ -885,6 +903,42 @@
         {
           "path": "pkg/cleanup/deletion_attempt_test.go",
           "selector": "TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.storage-enrollment",
+      "title": "Collect writes during enrollment without granting cleanup",
+      "title_zh": "Collect writes during enrollment without granting cleanup",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.RegisterStorage",
+      "code_paths": [
+        "pkg/cleanup/registration.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registration_test.go",
+          "selector": "TestStorageRegistrationCollectsWritesWithoutEnablingDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.storage-identity",
+      "title": "Bind storage identity atomically without replacing prior markers",
+      "title_zh": "Bind storage identity atomically without replacing prior markers",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/registryproxy.InitializeStorageIdentity",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/identity.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registryproxy/identity_test.go",
+          "selector": "TestStorageIdentityIsBoundAndNeverOverwritten"
         }
       ],
       "test_type": "regression",

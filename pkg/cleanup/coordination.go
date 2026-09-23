@@ -128,7 +128,7 @@ func AcquireOperation(database *gorm.DB, r CoordinationRequest) (bool, error) {
 	if !gorm.IsRecordNotFoundError(err) {
 		return false, err
 	}
-	if store.Mode != "ready" {
+	if store.Mode != "ready" && !(store.Mode == "collecting" && r.Kind == "producer") {
 		return false, ErrCoordinationBusy
 	}
 	var active []model.CleanupOperation
