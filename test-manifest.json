@@ -710,6 +710,41 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.version-activation-fence",
+      "title": "Fence upgrade and rollback against version retirement",
+      "title_zh": "Fence upgrade and rollback against version retirement",
+      "interface_type": "workflow",
+      "interface": "OperationHandler.upgrade and ServiceAction.RollBack",
+      "code_paths": [
+        "api/handler/service.go",
+        "api/handler/service_operation.go"
+      ],
+      "tests": [
+        {
+          "path": "api/handler/cleanup_rollback_test.go",
+          "selector": "TestLegacyRollbackCannotActivateRetiredVersion"
+        },
+        {
+          "path": "api/handler/cleanup_rollback_test.go",
+          "selector": "TestExplicitUpgradeRechecksVersionUnderRetirementLock"
+        },
+        {
+          "path": "api/handler/cleanup_rollback_test.go",
+          "selector": "TestUpgradeQueueFailureCannotOverwriteNewerDeployment"
+        },
+        {
+          "path": "api/handler/cleanup_rollback_test.go",
+          "selector": "TestLegacyRollbackRejectsWrongTenant"
+        },
+        {
+          "path": "api/handler/cleanup_rollback_test.go",
+          "selector": "TestExplicitUpgradeEnqueuesValidatedVersion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cloud-storage.alioss-error-map",
       "title": "Convert AliOSS service errors into shared storage SDK errors",
       "title_zh": "\u5c06 AliOSS \u670d\u52a1\u9519\u8bef\u8f6c\u6362\u4e3a\u7edf\u4e00\u5b58\u50a8 SDK \u9519\u8bef",

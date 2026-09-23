@@ -2749,26 +2749,20 @@ func (s *ServiceAction) RollBack(rs *apimodel.RollbackStruct) error {
 	if err != nil {
 		return err
 	}
-	oldDeployVersion := service.DeployVersion
+	if service.TenantID != rs.TenantID {
+		return fmt.Errorf("invalid rollback tenant")
+	}
 	if service.DeployVersion == rs.DeployVersion {
 		return fmt.Errorf("current version is %v, don't need rollback", rs.DeployVersion)
 	}
-	service.DeployVersion = rs.DeployVersion
-	if err := db.GetManager().TenantServiceDao().UpdateModel(service); err != nil {
+	previous, err := cleanupguard.SelectRollbackVersion(db.GetManager().Begin, service.TenantID, service.ServiceID, rs.DeployVersion, rs.EventID, service.DeployVersion)
+	if err != nil {
 		return err
 	}
-	//发送重启消息到MQ
-	startStopStruct := &apimodel.StartStopStruct{
-		TenantID:  rs.TenantID,
-		ServiceID: rs.ServiceID,
-		EventID:   rs.EventID,
-		TaskType:  "rolling_upgrade",
-	}
+	startStopStruct := &apimodel.StartStopStruct{TenantID: service.TenantID, ServiceID: service.ServiceID, EventID: rs.EventID, TaskType: "rolling_upgrade"}
 	if err := GetServiceManager().StartStopService(startStopStruct); err != nil {
-		// rollback
-		service.DeployVersion = oldDeployVersion
-		if err := db.GetManager().TenantServiceDao().UpdateModel(service); err != nil {
-			logrus.Warningf("error deploy version rollback: %v", err)
+		if _, restoreErr := cleanupguard.SelectRollbackVersion(db.GetManager().Begin, service.TenantID, service.ServiceID, previous, rs.EventID+"-undo", rs.DeployVersion); restoreErr != nil {
+			logrus.Warnf("failed to restore previous rollback target for component %s", service.ServiceID)
 		}
 		return err
 	}
