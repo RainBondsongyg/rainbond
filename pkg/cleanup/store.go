@@ -140,7 +140,7 @@ func InspectVersions(begin func() *gorm.DB, serviceID string) (Inspection, error
 	if err := tx.Table("tenant_service_version").Select("event_id, activation_revision").Where("service_id = ?", serviceID).Find(&versions).Error; err != nil {
 		return Inspection{}, err
 	}
-	result := Inspection{Protocol: 1, CurrentVersion: service.DeployVersion, ActiveOperation: active > 0, Checkpoints: map[string]string{}}
+	result := Inspection{Protocol: 2, CurrentVersion: service.DeployVersion, ActiveOperation: active > 0, Checkpoints: map[string]string{}}
 	for _, v := range versions {
 		if v.EventID != "" {
 			result.Checkpoints[v.EventID] = v.ActivationRevision

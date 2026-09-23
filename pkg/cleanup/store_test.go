@@ -115,6 +115,7 @@ func TestFailedRollbackDoesNotOverwriteNewerOperation(t *testing.T) {
 func TestActivationCheckpointFailureRollsBackServiceChange(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "version"))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "version").WillReturnError(errors.New("write failure"))
 	mock.ExpectRollback()
@@ -131,6 +132,7 @@ func TestActivationDoesNotCommitCallerTransaction(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
 	tx := database.Begin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "version"))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "version").WillReturnResult(sqlmock.NewResult(0, 1))
 	if err := TrackServiceActivation(tx, "service", "version", func(tx *gorm.DB) error { return tx.Exec("UPDATE tenant_services SET deploy_version='version'").Error }); err != nil {
@@ -138,6 +140,72 @@ func TestActivationDoesNotCommitCallerTransaction(t *testing.T) {
 	}
 	mock.ExpectRollback()
 	tx.Rollback()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// capability_id: rainbond.cleanup.generic-activation-fence
+func TestActivationCannotRestoreRetiredTargetThroughGenericSave(t *testing.T) {
+	database, mock := mockRetirementDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "current"))
+	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "retired").WillReturnRows(sqlmock.NewRows([]string{"ID"}))
+	mock.ExpectRollback()
+	saved := false
+	err := TrackServiceActivation(database, "service", "retired", func(tx *gorm.DB) error { saved = true; return nil })
+	if !errors.Is(err, gorm.ErrRecordNotFound) || saved {
+		t.Fatalf("retired target saved: saved=%v err=%v", saved, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestActivationPermitsNewBuildWithExistingPendingRecord(t *testing.T) {
+	database, mock := mockRetirementDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "current"))
+	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "new").WillReturnRows(sqlmock.NewRows([]string{"ID", "final_status"}).AddRow(8, ""))
+	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "new").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	err := TrackServiceActivation(database, "service", "new", func(tx *gorm.DB) error { return tx.Exec("UPDATE tenant_services SET deploy_version='new'").Error })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConfigurationSaveKeepsLegacyCurrentTargetWithoutReactivation(t *testing.T) {
+	database, mock := mockRetirementDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "legacy"))
+	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "legacy").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+	err := TrackServiceActivation(database, "service", "legacy", func(tx *gorm.DB) error { return tx.Exec("UPDATE tenant_services SET name='renamed'").Error })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInspectionAdvertisesGuardedVersionUpdates(t *testing.T) {
+	database, mock := mockRetirementDB(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "current"))
+	mock.ExpectQuery("SELECT count.*tenant_services_event").WithArgs("service", "cleanup-retire-buildversion", "complete", "failure", "emptycomplete").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("SELECT event_id, activation_revision.*tenant_service_version").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"event_id", "activation_revision"}).AddRow("event", "revision"))
+	mock.ExpectCommit()
+	result, err := InspectVersions(database.Begin, "service")
+	if err != nil || result.Protocol != 2 || result.CurrentVersion != "current" || result.Checkpoints["event"] != "revision" {
+		t.Fatal(result, err)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

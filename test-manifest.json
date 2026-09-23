@@ -710,6 +710,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.generic-activation-fence",
+      "title": "Reject generic activation of retired version records",
+      "title_zh": "Reject generic activation of retired version records",
+      "interface_type": "workflow",
+      "interface": "cleanup.TrackServiceActivation",
+      "code_paths": [
+        "pkg/cleanup/activation.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/store_test.go",
+          "selector": "TestActivationCannotRestoreRetiredTargetThroughGenericSave"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.version-activation-fence",
       "title": "Fence upgrade and rollback against version retirement",
       "title_zh": "Fence upgrade and rollback against version retirement",
@@ -739,6 +757,42 @@
         {
           "path": "api/handler/cleanup_rollback_test.go",
           "selector": "TestExplicitUpgradeEnqueuesValidatedVersion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.version-update-no-resurrection",
+      "title": "Version callbacks preserve activation and never recreate retired records",
+      "title_zh": "Version callbacks preserve activation and never recreate retired records",
+      "interface_type": "dao_method",
+      "interface": "VersionInfoDaoImpl.UpdateModel",
+      "code_paths": [
+        "db/mysql/dao/version.go"
+      ],
+      "tests": [
+        {
+          "path": "db/mysql/dao/version_cleanup_test.go",
+          "selector": "TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.vm-activation-dispatch",
+      "title": "Do not deploy VM after version activation rejection",
+      "title_zh": "Do not deploy VM after version activation rejection",
+      "interface_type": "workflow",
+      "interface": "exectorManager.buildFromVM",
+      "code_paths": [
+        "builder/exector/exector.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_activation_test.go",
+          "selector": "TestVMBuildCannotDispatchAfterActivationRejected"
         }
       ],
       "test_type": "regression",

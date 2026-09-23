@@ -26,6 +26,19 @@ func TrackServiceActivation(database *gorm.DB, serviceID, version string, save f
 		return err
 	}
 	apply := func(tx *gorm.DB) error {
+		// Generic DAO saves and builder completion must serialize with retirement,
+		// not only explicit rollback/upgrade handlers. An absent target must not
+		// become current again through an older in-memory service object.
+		var current serviceRow
+		if err := tx.Table("tenant_services").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ?", serviceID).First(&current).Error; err != nil {
+			return err
+		}
+		if current.DeployVersion != version {
+			var target versionRow
+			if err := tx.Table("tenant_service_version").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND build_version = ?", serviceID, version).First(&target).Error; err != nil {
+				return err
+			}
+		}
 		if err := save(tx); err != nil {
 			return err
 		}

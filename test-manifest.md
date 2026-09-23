@@ -43,7 +43,10 @@
 | rainbond.builder.mirror-docker-ref-rewrite | docker daemon pulls rewrite docker.io refs to mirrors with fallback order | active | unit | builder/sources.mirrorPullRefs | builder/sources/mirror_hosts_test.go::TestMirrorPullRefs |
 | rainbond.builder.mirror-merge-manual-priority | Manual REGISTRY_MIRRORS take priority over dynamic mirrors with host dedup | active | unit | builder/sources.mergeMirrors | builder/sources/mirror_merge_test.go::TestMergeMirrors |
 | rainbond.builder.registered-worker-dispatch | 已注册 worker 分发时不再误报未知任务 | active | regression | builder/exector.exectorManager.RunTask | builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker |
+| rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
+| rainbond.cleanup.version-update-no-resurrection | Version callbacks preserve activation and never recreate retired records | active | regression | VersionInfoDaoImpl.UpdateModel | db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation |
+| rainbond.cleanup.vm-activation-dispatch | Do not deploy VM after version activation rejection | active | regression | exectorManager.buildFromVM | builder/exector/cleanup_activation_test.go::TestVMBuildCannotDispatchAfterActivationRejected |
 | rainbond.cloud-storage.alioss-error-map | 将 AliOSS 服务错误转换为统一存储 SDK 错误 | active | regression | builder/cloudos.svcErrToS3SDKError | builder/cloudos/alioss_test.go::TestSvcErrToS3SDKError |
 | rainbond.cloud-storage.driver-factory | 将云存储配置分发到正确的驱动实现 | active | regression | builder/cloudos.New | builder/cloudos/cloudos_test.go::TestNewDispatchesProviderDrivers |
 | rainbond.cloud-storage.provider-parse | 解析云存储 provider 配置值 | active | regression | builder/cloudos.Str2S3Provider | builder/cloudos/cloudos_test.go::TestStr2S3Provider |
@@ -892,6 +895,16 @@
 - 代码路径: `builder/exector/exector.go`
 - 测试路径: `builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker`
 
+### Reject generic activation of retired version records
+
+- Capability ID: `rainbond.cleanup.generic-activation-fence`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `cleanup.TrackServiceActivation`
+- 代码路径: `pkg/cleanup/activation.go`
+- 测试路径: `pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave`
+
 ### Fence upgrade and rollback against version retirement
 
 - Capability ID: `rainbond.cleanup.version-activation-fence`
@@ -901,6 +914,26 @@
 - 业务入口: `OperationHandler.upgrade and ServiceAction.RollBack`
 - 代码路径: `api/handler/service.go`, `api/handler/service_operation.go`
 - 测试路径: `api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion`, `api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock`, `api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment`, `api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant`, `api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion`
+
+### Version callbacks preserve activation and never recreate retired records
+
+- Capability ID: `rainbond.cleanup.version-update-no-resurrection`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `dao_method`
+- 业务入口: `VersionInfoDaoImpl.UpdateModel`
+- 代码路径: `db/mysql/dao/version.go`
+- 测试路径: `db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation`
+
+### Do not deploy VM after version activation rejection
+
+- Capability ID: `rainbond.cleanup.vm-activation-dispatch`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `exectorManager.buildFromVM`
+- 代码路径: `builder/exector/exector.go`
+- 测试路径: `builder/exector/cleanup_activation_test.go::TestVMBuildCannotDispatchAfterActivationRejected`
 
 ### 将 AliOSS 服务错误转换为统一存储 SDK 错误
 

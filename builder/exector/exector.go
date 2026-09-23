@@ -559,6 +559,8 @@ func (e *exectorManager) buildFromVM(task *pb.TaskMessage) {
 	}
 	if err := e.UpdateDeployVersion(v.ServiceID, v.DeployVersion); err != nil {
 		logrus.Errorf("Update app service deploy version failure %s, service %s do not auto upgrade", err.Error(), v.ServiceID)
+		v.Logger.Error("VM version activation rejected; deployment was not dispatched", map[string]string{"step": "callback", "status": "failure"})
+		return
 	}
 	err := e.sendAction(v.TenantID, v.ServiceID, v.EventID, v.DeployVersion, v.Action, configs, v.Logger)
 	if err != nil {
