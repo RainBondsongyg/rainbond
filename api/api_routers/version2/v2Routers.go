@@ -118,6 +118,7 @@ func (v2 *V2) Routes() chi.Router {
 	r.Mount("/proxy-pass", v2.proxyRoute())
 	r.Get("/pods/logs", controller.GetManager().PodLogs)
 	r.Mount("/platform", v2.platformPluginsRouter())
+	r.Mount("/cleanup", v2.cleanupCoordinationRouter())
 
 	return r
 }
@@ -872,5 +873,23 @@ func (v2 *V2) licenseRouter() chi.Router {
 	r.Get("/cluster-id", controller.GetLicenseV2Controller().GetClusterID)
 	r.Post("/activate", controller.GetLicenseV2Controller().ActivateLicense)
 	r.Get("/status", controller.GetLicenseV2Controller().GetLicenseStatus)
+	return r
+}
+
+// Coordination endpoints remain authenticated even when the broad API is
+// configured without TOKEN; absent credentials must never enable coordination.
+func (v2 *V2) cleanupCoordinationRouter() chi.Router {
+	r := chi.NewRouter()
+	r.Use(middleware.FullToken)
+	h := controller.NewCleanupCoordinationHandler()
+	r.Post("/stores/{storage_id}/operations", h.Acquire)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/finish", h.Finish)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/inspect", h.Inspect)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/request", h.RequestMaintenance)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/enter", h.EnterMaintenance)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/cancel", h.CancelDrain)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/complete", h.CompleteMaintenanceWork)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/restore", h.BeginRestore)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/restored", h.FinishRestore)
 	return r
 }

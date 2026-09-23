@@ -710,6 +710,42 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.coordination-route-auth",
+      "title": "Require Region authentication for every coordination route",
+      "title_zh": "Require Region authentication for every coordination route",
+      "interface_type": "view_endpoint",
+      "interface": "/v2/cleanup/stores/{storage_id}/operations",
+      "code_paths": [
+        "api/api_routers/version2/v2Routers.go"
+      ],
+      "tests": [
+        {
+          "path": "api/api_routers/version2/cleanup_coordination_test.go",
+          "selector": "TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.durable-coordination",
+      "title": "Persist coordinated operations across restarts and conflicts",
+      "title_zh": "Persist coordinated operations across restarts and conflicts",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.AcquireOperation",
+      "code_paths": [
+        "pkg/cleanup/coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/coordination_test.go",
+          "selector": "TestPersistentCoordinationConflictsAndRecovery"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.generic-activation-fence",
       "title": "Reject generic activation of retired version records",
       "title_zh": "Reject generic activation of retired version records",
@@ -722,6 +758,60 @@
         {
           "path": "pkg/cleanup/store_test.go",
           "selector": "TestActivationCannotRestoreRetiredTargetThroughGenericSave"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.manual-gc-maintenance",
+      "title": "Drain writes and require confirmed restoration around manual GC",
+      "title_zh": "Drain writes and require confirmed restoration around manual GC",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.RequestMaintenance",
+      "code_paths": [
+        "pkg/cleanup/maintenance.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/maintenance_test.go",
+          "selector": "TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.registry-request-scope",
+      "title": "Reject ambiguous Registry paths and direct blob deletion",
+      "title_zh": "Reject ambiguous Registry paths and direct blob deletion",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/registryproxy.ClassifyRequest",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/request.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registryproxy/request_test.go",
+          "selector": "TestRegistryProxyRejectsAmbiguousPathsAndUnselectedDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.single-deletion-attempt",
+      "title": "Consume deletion permission once and retain verification protection",
+      "title_zh": "Consume deletion permission once and retain verification protection",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.BeginDeletionAttempt",
+      "code_paths": [
+        "pkg/cleanup/deletion_attempt.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/deletion_attempt_test.go",
+          "selector": "TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified"
         }
       ],
       "test_type": "regression",
