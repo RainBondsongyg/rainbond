@@ -837,6 +837,42 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.registry-ingress-isolation",
+      "title": "Reject registry routes that bypass the coordinator",
+      "title_zh": "Reject registry routes that bypass the coordinator",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/kubeidentity.InspectRegistryIngress",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/registry_ingress.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/registry_ingress_test.go",
+          "selector": "TestRegistryIngressRequiresExclusiveCoordinatedRoute"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.registry-kubernetes-binding",
+      "title": "Verify actual registry Pod and backing volume identity",
+      "title_zh": "Verify actual registry Pod and backing volume identity",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/kubeidentity.InspectRegistryMount",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/registry_mount.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/registry_mount_test.go",
+          "selector": "TestRegistryMountBindingUsesRealVolumeAndPodIdentity"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registry-request-scope",
       "title": "Reject ambiguous Registry paths and direct blob deletion",
       "title_zh": "Reject ambiguous Registry paths and direct blob deletion",
@@ -849,6 +885,24 @@
         {
           "path": "pkg/cleanup/registryproxy/request_test.go",
           "selector": "TestRegistryProxyRejectsAmbiguousPathsAndUnselectedDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.registry-service-coverage",
+      "title": "Check every registry service instance without accepting partial coverage",
+      "title_zh": "Check every registry service instance without accepting partial coverage",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/kubeidentity.InspectRegistryService",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/registry_service.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/registry_service_test.go",
+          "selector": "TestRegistryServiceRejectsMixedAndEmptyDeployments"
         }
       ],
       "test_type": "regression",
