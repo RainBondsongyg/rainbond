@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi"
 	"github.com/goodrain/rainbond/api/middleware"
 	"github.com/goodrain/rainbond/db/model"
 	guard "github.com/goodrain/rainbond/pkg/cleanup"
+	"github.com/goodrain/rainbond/pkg/cleanup/kubeidentity"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
@@ -163,5 +165,64 @@ func TestCoordinationClientThroughAuthenticatedMaintenanceAPI(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// capability_id: rainbond.cleanup.registry-preparation
+func TestRegistryPreparationDerivesIdentityAndNeverPromotesReady(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, inspectRegistry: func(_ context.Context, pod, uid string) (kubeidentity.RegistryPreparation, error) {
+		calls++
+		if pod != "owned-pod" || uid != "owned-uid" {
+			return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+		}
+		return kubeidentity.RegistryPreparation{Mount: kubeidentity.RegistryMountObservation{VolumeUID: "observed-volume"}, Container: "registry", Root: "/var/lib/registry"}, nil
+	}}
+	t.Setenv("TOKEN", "isolated-fixture")
+	invoke := func(body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("POST", "/registry/prepare", strings.NewReader(body))
+		request.Header.Set("Authorization", "Token isolated-fixture")
+		response := httptest.NewRecorder()
+		middleware.FullToken(http.HandlerFunc(h.PrepareRegistry)).ServeHTTP(response, request)
+		return response
+	}
+	if response := invoke(`{"pod":"owned-pod","pod_uid":"owned-uid","storage_id":"forged"}`); response.Code != 400 || calls != 0 {
+		t.Fatal("caller supplied identity accepted")
+	}
+	var first guard.StorageRegistration
+	for i := 0; i < 2; i++ {
+		response := invoke(`{"pod":"owned-pod","pod_uid":"owned-uid"}`)
+		if response.Code != 200 {
+			t.Fatal("preparation failed", response.Code)
+		}
+		var decoded struct {
+			Bean struct {
+				Registration guard.StorageRegistration `json:"registration"`
+				Storage      guard.StorageObservation  `json:"storage"`
+			} `json:"bean"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if decoded.Bean.Storage.Mode != "collecting" || decoded.Bean.Registration.VolumeUID != "observed-volume" {
+			t.Fatal("unverified caller state promoted")
+		}
+		if i == 0 {
+			first = decoded.Bean.Registration
+		} else if first != decoded.Bean.Registration {
+			t.Fatal("generation changed on retry")
+		}
+	}
+	if response := invoke(`{"pod":"other-pod","pod_uid":"owned-uid"}`); response.Code != 503 {
+		t.Fatal("failed inspection did not block preparation")
 	}
 }

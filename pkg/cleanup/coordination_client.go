@@ -52,15 +52,17 @@ func NewCoordinationClient(endpoint, token string, allowHTTP bool, transports ..
 type coordinationResponse struct {
 	Msg  string `json:"msg"`
 	Bean struct {
-		Protocol      int                  `json:"protocol"`
-		NewlyAdmitted *bool                `json:"newly_admitted"`
-		Recorded      *bool                `json:"recorded"`
-		State         string               `json:"state"`
-		Permit        string               `json:"permit"`
-		Binding       *CoordinationRequest `json:"binding"`
-		Storage       *StorageObservation  `json:"storage"`
-		Repository    string               `json:"repository"`
-		UploadID      string               `json:"upload_id"`
+		Protocol          int                  `json:"protocol"`
+		NewlyAdmitted     *bool                `json:"newly_admitted"`
+		Recorded          *bool                `json:"recorded"`
+		State             string               `json:"state"`
+		Permit            string               `json:"permit"`
+		Binding           *CoordinationRequest `json:"binding"`
+		Storage           *StorageObservation  `json:"storage"`
+		Registration      *StorageRegistration `json:"registration"`
+		RegistryContainer string               `json:"registry_container"`
+		Repository        string               `json:"repository"`
+		UploadID          string               `json:"upload_id"`
 	} `json:"bean"`
 }
 
@@ -341,4 +343,34 @@ func (c *CoordinationClient) InspectStorage(ctx context.Context, storage, genera
 		return StorageObservation{}, ErrCoordinationChanged
 	}
 	return *observed, nil
+}
+
+// RegistryPreparation is configuration data, not permission to begin cleanup.
+type RegistryPreparation struct {
+	Registration      StorageRegistration
+	Storage           StorageObservation
+	RegistryContainer string
+}
+
+// PrepareRegistry obtains the physical identity selected by the control plane.
+func (c *CoordinationClient) PrepareRegistry(ctx context.Context, pod, uid string) (RegistryPreparation, error) {
+	if pod == "" || len(pod) > 253 || uid == "" || len(uid) > 64 {
+		return RegistryPreparation{}, ErrCoordinationChanged
+	}
+	response, err := c.callPath(ctx, "/v2/cleanup/registry/prepare", struct {
+		Pod    string `json:"pod"`
+		PodUID string `json:"pod_uid"`
+	}{pod, uid})
+	if err != nil {
+		return RegistryPreparation{}, err
+	}
+	binding, storage := response.Bean.Registration, response.Bean.Storage
+	if binding == nil || storage == nil || response.Bean.RegistryContainer == "" {
+		return RegistryPreparation{}, ErrCoordinationUnavailable
+	}
+	fingerprint, err := binding.Fingerprint()
+	if err != nil || storage.StorageID != binding.StorageID || storage.Generation != binding.Generation || storage.RegistrationFingerprint != fingerprint {
+		return RegistryPreparation{}, ErrCoordinationChanged
+	}
+	return RegistryPreparation{Registration: *binding, Storage: *storage, RegistryContainer: response.Bean.RegistryContainer}, nil
 }

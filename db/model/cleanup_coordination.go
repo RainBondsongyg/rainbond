@@ -5,6 +5,7 @@ import "time"
 // CleanupStorage is provisioned with a verified physical storage generation.
 // Migration alone never makes a storage ready for cleanup.
 type CleanupStorage struct {
+	RegistrationJSON        string `gorm:"type:text"`
 	RegistrationFingerprint string `gorm:"type:varchar(64);not null;default:''"`
 	MaintenanceOperationID  string `gorm:"type:varchar(64);not null;default:''"`
 	PreviousMode            string `gorm:"type:varchar(24);not null;default:''"`

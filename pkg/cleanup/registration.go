@@ -55,7 +55,8 @@ func RegisterStorage(database *gorm.DB, r StorageRegistration) error {
 	if !gorm.IsRecordNotFoundError(err) {
 		return err
 	}
-	created := model.CleanupStorage{StorageID: r.StorageID, Generation: r.Generation, RegistrationFingerprint: fingerprint, Mode: "collecting"}
+	encoded, _ := json.Marshal(r)
+	created := model.CleanupStorage{StorageID: r.StorageID, Generation: r.Generation, RegistrationFingerprint: fingerprint, RegistrationJSON: string(encoded), Mode: "collecting"}
 	if err := database.Create(&created).Error; err != nil {
 		// A concurrent identical registration is harmless. Never use an upsert that
 		// could overwrite a live generation or clear an existing maintenance state.
@@ -89,4 +90,46 @@ func InspectStorage(database *gorm.DB, storage, generation string) (StorageObser
 		return StorageObservation{}, ErrCoordinationChanged
 	}
 	return StorageObservation{StorageID: row.StorageID, Generation: row.Generation, RegistrationFingerprint: row.RegistrationFingerprint, Mode: row.Mode, Revision: row.Revision}, nil
+}
+
+// ProvisionRegistryStorage assigns identity from an observed physical volume.
+// Retried provisioning returns the original generation, never a replacement.
+func ProvisionRegistryStorage(database *gorm.DB, volumeUID, root string) (StorageRegistration, error) {
+	key := sha256.Sum256([]byte("registry-filesystem\x00" + volumeUID))
+	storageID := hex.EncodeToString(key[:])
+	read := func() (StorageRegistration, error) {
+		var stored model.CleanupStorage
+		if err := database.Where("storage_id = ?", storageID).First(&stored).Error; err != nil {
+			return StorageRegistration{}, err
+		}
+		var binding StorageRegistration
+		if json.Unmarshal([]byte(stored.RegistrationJSON), &binding) != nil {
+			return binding, ErrCoordinationChanged
+		}
+		fingerprint, err := binding.Fingerprint()
+		if err != nil || binding.StorageID != storageID || binding.Generation != stored.Generation || binding.VolumeUID != volumeUID || binding.RootPath != root || fingerprint != stored.RegistrationFingerprint {
+			return StorageRegistration{}, ErrCoordinationChanged
+		}
+		return binding, nil
+	}
+	current, err := read()
+	if err == nil {
+		return current, nil
+	}
+	if !gorm.IsRecordNotFoundError(err) {
+		return StorageRegistration{}, err
+	}
+	generation, err := NewActivationRevision()
+	if err != nil {
+		return StorageRegistration{}, err
+	}
+	created := StorageRegistration{StorageID: storageID, Generation: generation, VolumeUID: volumeUID, RootPath: root}
+	if err := RegisterStorage(database, created); err != nil {
+		// Another installer may have won the same physical identity concurrently.
+		if existing, readErr := read(); readErr == nil {
+			return existing, nil
+		}
+		return StorageRegistration{}, err
+	}
+	return created, nil
 }

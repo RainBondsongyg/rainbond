@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -50,6 +51,34 @@ func TestCoordinationClientRequiresExplicitProtocolAndAdmission(t *testing.T) {
 		server.Close()
 		if err == nil || admitted {
 			t.Fatal("invalid acknowledgement admitted operation")
+		}
+	}
+}
+
+func TestPrepareRegistryClientRejectsMismatchedBinding(t *testing.T) {
+	for _, matches := range []bool{true, false} {
+		binding := StorageRegistration{StorageID: "derived", Generation: "one", VolumeUID: "observed", RootPath: "/var/lib/registry"}
+		fingerprint, _ := binding.Fingerprint()
+		if !matches {
+			fingerprint = "wrong"
+		}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v2/cleanup/registry/prepare" {
+				t.Error("wrong preparation path")
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"bean": map[string]interface{}{"protocol": 1, "registration": binding, "storage": StorageObservation{StorageID: binding.StorageID, Generation: binding.Generation, RegistrationFingerprint: fingerprint, Mode: "collecting"}, "registry_container": "registry"}})
+		}))
+		client, err := NewCoordinationClient(server.URL, "fixture-only", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observed, err := client.PrepareRegistry(context.Background(), "pod", "uid")
+		server.Close()
+		if matches && (err != nil || observed.Registration != binding) {
+			t.Fatal("valid preparation rejected", err)
+		}
+		if !matches && err == nil {
+			t.Fatal("mismatched preparation accepted")
 		}
 	}
 }

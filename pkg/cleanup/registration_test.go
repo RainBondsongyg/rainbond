@@ -85,3 +85,22 @@ func TestRepeatedRegistrationDoesNotClearMaintenance(t *testing.T) {
 		t.Fatal("registration changed maintenance ownership", err)
 	}
 }
+
+func TestProvisionStorageKeepsGenerationAndRejectsChangedDescriptor(t *testing.T) {
+	database, _ := coordinationDB(t)
+	first, err := ProvisionRegistryStorage(database, "physical-volume", "/var/lib/registry")
+	if err != nil || first.Generation == "" || first.StorageID == "" {
+		t.Fatal(first, err)
+	}
+	second, err := ProvisionRegistryStorage(database, "physical-volume", "/var/lib/registry")
+	if err != nil || second != first {
+		t.Fatal("provisioning rotated live generation", second, err)
+	}
+	observed, err := InspectStorage(database, first.StorageID, first.Generation)
+	if err != nil || observed.Mode != "collecting" {
+		t.Fatal("provisioning granted write cleanup", observed, err)
+	}
+	if _, err := ProvisionRegistryStorage(database, "physical-volume", "/different-root"); !errors.Is(err, ErrCoordinationChanged) {
+		t.Fatal("silently changed existing descriptor", err)
+	}
+}

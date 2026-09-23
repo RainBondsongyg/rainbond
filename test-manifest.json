@@ -873,6 +873,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.registry-preparation",
+      "title": "Derive registry identity from controlled inspection without granting cleanup",
+      "title_zh": "Derive registry identity from controlled inspection without granting cleanup",
+      "interface_type": "view_endpoint",
+      "interface": "/v2/cleanup/registry/prepare",
+      "code_paths": [
+        "api/controller/cleanup_coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_coordination_test.go",
+          "selector": "TestRegistryPreparationDerivesIdentityAndNeverPromotesReady"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registry-request-scope",
       "title": "Reject ambiguous Registry paths and direct blob deletion",
       "title_zh": "Reject ambiguous Registry paths and direct blob deletion",

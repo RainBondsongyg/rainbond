@@ -1,18 +1,26 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
+	"github.com/goodrain/rainbond/config/configs"
 	"github.com/goodrain/rainbond/db"
 	guard "github.com/goodrain/rainbond/pkg/cleanup"
+	"github.com/goodrain/rainbond/pkg/cleanup/kubeidentity"
+	"github.com/goodrain/rainbond/pkg/component/k8s"
 	httputil "github.com/goodrain/rainbond/util/http"
 	"github.com/jinzhu/gorm"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // CleanupCoordinationHandler is an internal Region API. Routes must always use
@@ -20,13 +28,14 @@ import (
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
 type CleanupCoordinationHandler struct {
-	database  func() *gorm.DB
-	permitKey func() []byte
+	database        func() *gorm.DB
+	permitKey       func() []byte
+	inspectRegistry func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
 }
 
 // NewCleanupCoordinationHandler uses the Region database manager.
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
-	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }}
+	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry}
 }
 
 func coordinationError(w http.ResponseWriter, r *http.Request, err error) {
@@ -401,4 +410,66 @@ func (h *CleanupCoordinationHandler) StorageStatus(w http.ResponseWriter, r *htt
 		Protocol int                      `json:"protocol"`
 		Storage  guard.StorageObservation `json:"storage"`
 	}{1, observation})
+}
+
+func inspectSystemRegistry(ctx context.Context, pod, uid string) (kubeidentity.RegistryPreparation, error) {
+	component := k8s.Default()
+	configuration := configs.Default()
+	if component == nil || component.Clientset == nil || configuration.PublicConfig == nil || configuration.ServerConfig == nil {
+		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+	}
+	namespace := configuration.PublicConfig.RbdNamespace
+	endpoint, err := url.Parse(configuration.ServerConfig.RbdHub)
+	if err != nil || endpoint.User != nil || namespace == "" {
+		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+	}
+	host := endpoint.Hostname()
+	service := strings.Split(host, ".")[0]
+	if host != service && host != service+"."+namespace && host != service+"."+namespace+".svc" && host != service+"."+namespace+".svc.cluster.local" {
+		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+	}
+	return kubeidentity.InspectNativeRegistry(ctx, component.Clientset, namespace, service, pod, uid)
+}
+
+var registryPodUID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
+
+// PrepareRegistry derives identity from the configured system registry, never
+// from caller-provided volume IDs, generations, namespaces or filesystem paths.
+func (h *CleanupCoordinationHandler) PrepareRegistry(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pod    string `json:"pod"`
+		PodUID string `json:"pod_uid"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	if len(validation.IsDNS1123Subdomain(body.Pod)) != 0 || !registryPodUID.MatchString(body.PodUID) {
+		httputil.ReturnError(r, w, 400, "INVALID_REGISTRY_POD")
+		return
+	}
+	if h.inspectRegistry == nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	observed, err := h.inspectRegistry(r.Context(), body.Pod, body.PodUID)
+	if err != nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	binding, err := guard.ProvisionRegistryStorage(h.database(), observed.Mount.VolumeUID, observed.Root)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	status, err := guard.InspectStorage(h.database(), binding.StorageID, binding.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol     int                       `json:"protocol"`
+		Registration guard.StorageRegistration `json:"registration"`
+		Storage      guard.StorageObservation  `json:"storage"`
+		Container    string                    `json:"registry_container"`
+	}{1, binding, status, observed.Container})
 }

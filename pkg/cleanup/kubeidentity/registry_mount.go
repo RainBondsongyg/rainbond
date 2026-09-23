@@ -138,9 +138,14 @@ func InspectRegistryMount(ctx context.Context, client kubernetes.Interface, r Re
 	if nativeMount.Name != sidecarMount.Name || nativeRelative != sidecarRelative || nativeMount.ReadOnly || !sidecarMount.ReadOnly {
 		return denied, ErrBinding
 	}
+	return inspectVolume(ctx, client, pod, nativeMount.Name, nativeRelative)
+}
+
+func inspectVolume(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod, volumeName, relative string) (RegistryMountObservation, error) {
+	denied := RegistryMountObservation{}
 	var volume *corev1.Volume
 	for i := range pod.Spec.Volumes {
-		if pod.Spec.Volumes[i].Name == nativeMount.Name {
+		if pod.Spec.Volumes[i].Name == volumeName {
 			if volume != nil {
 				return denied, ErrBinding
 			}
@@ -150,20 +155,20 @@ func InspectRegistryMount(ctx context.Context, client kubernetes.Interface, r Re
 	if volume == nil {
 		return denied, ErrBinding
 	}
-	observed := RegistryMountObservation{PodUID: string(pod.UID), PodVersion: pod.ResourceVersion, RelativeRoot: nativeRelative, NodeName: pod.Spec.NodeName}
+	observed := RegistryMountObservation{PodUID: string(pod.UID), PodVersion: pod.ResourceVersion, RelativeRoot: relative, NodeName: pod.Spec.NodeName}
 	if source := volume.PersistentVolumeClaim; source != nil {
 		if source.ReadOnly {
 			return denied, ErrBinding
 		}
-		pvc, err := client.CoreV1().PersistentVolumeClaims(r.Namespace).Get(ctx, source.ClaimName, metav1.GetOptions{})
+		pvc, err := client.CoreV1().PersistentVolumeClaims(pod.Namespace).Get(ctx, source.ClaimName, metav1.GetOptions{})
 		if err != nil || pvc.UID == "" || pvc.DeletionTimestamp != nil || pvc.Status.Phase != corev1.ClaimBound || pvc.Spec.VolumeName == "" || (pvc.Spec.VolumeMode != nil && *pvc.Spec.VolumeMode != corev1.PersistentVolumeFilesystem) {
 			return denied, ErrBinding
 		}
 		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
-		if err != nil || pv.UID == "" || pv.DeletionTimestamp != nil || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.UID != pvc.UID || pv.Spec.ClaimRef.Name != pvc.Name || pv.Spec.ClaimRef.Namespace != r.Namespace || (pv.Spec.VolumeMode != nil && *pv.Spec.VolumeMode != corev1.PersistentVolumeFilesystem) {
+		if err != nil || pv.UID == "" || pv.DeletionTimestamp != nil || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.UID != pvc.UID || pv.Spec.ClaimRef.Name != pvc.Name || pv.Spec.ClaimRef.Namespace != pod.Namespace || (pv.Spec.VolumeMode != nil && *pv.Spec.VolumeMode != corev1.PersistentVolumeFilesystem) {
 			return denied, ErrBinding
 		}
-		observed.VolumeUID = volumeIdentity("pvc", r.Namespace, string(pvc.UID), string(pv.UID), nativeRelative)
+		observed.VolumeUID = volumeIdentity("pvc", pod.Namespace, string(pvc.UID), string(pv.UID), relative)
 	} else if source := volume.HostPath; source != nil {
 		if !path.IsAbs(source.Path) || path.Clean(source.Path) != source.Path || strings.ContainsAny(source.Path, "\x00\\") || pod.Spec.NodeName == "" {
 			return denied, ErrBinding
@@ -175,7 +180,7 @@ func InspectRegistryMount(ctx context.Context, client kubernetes.Interface, r Re
 		if err != nil || node.UID == "" || node.DeletionTimestamp != nil {
 			return denied, ErrBinding
 		}
-		observed.VolumeUID = volumeIdentity("hostpath", string(node.UID), path.Join(source.Path, nativeRelative))
+		observed.VolumeUID = volumeIdentity("hostpath", string(node.UID), path.Join(source.Path, relative))
 	} else {
 		return denied, ErrBinding
 	}
