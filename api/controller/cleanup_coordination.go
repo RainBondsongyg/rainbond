@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/goodrain/rainbond/db"
@@ -17,16 +19,21 @@ import (
 // FullToken, including deployments where the general API token is not enabled.
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
-type CleanupCoordinationHandler struct{ database func() *gorm.DB }
+type CleanupCoordinationHandler struct {
+	database  func() *gorm.DB
+	permitKey func() []byte
+}
 
 // NewCleanupCoordinationHandler uses the Region database manager.
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
-	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }}
+	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }}
 }
 
 func coordinationError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code := http.StatusServiceUnavailable, "COORDINATION_UNAVAILABLE"
 	switch {
+	case errors.Is(err, guard.ErrCoordinationDenied):
+		status, code = 403, "COORDINATION_DENIED"
 	case errors.Is(err, guard.ErrCoordinationBusy):
 		status, code = 409, "COORDINATION_BUSY"
 	case errors.Is(err, guard.ErrCoordinationChanged):
@@ -220,6 +227,154 @@ func (h *CleanupCoordinationHandler) FinishRestore(w http.ResponseWriter, r *htt
 		return
 	}
 	if err := guard.FinishMaintenanceRestore(h.database(), body.CoordinationRequest, *body.Confirmed); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
+}
+
+// RegistryPermit issues a short-lived credential for an active immutable target.
+func (h *CleanupCoordinationHandler) RegistryPermit(w http.ResponseWriter, r *http.Request) {
+	var request guard.CoordinationRequest
+	if !coordinationDecode(w, r, &request) || !coordinationScopeFromRoute(w, r, &request) {
+		return
+	}
+	if h.permitKey == nil {
+		coordinationError(w, r, guard.ErrCoordinationDenied)
+		return
+	}
+	state, err := guard.InspectOperation(h.database(), request)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	if state != "active" {
+		coordinationError(w, r, guard.ErrCoordinationUncertain)
+		return
+	}
+	permit, err := guard.IssueRegistryDeletionPermit(h.permitKey(), request, time.Now())
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int    `json:"protocol"`
+		Permit   string `json:"permit"`
+	}{1, permit})
+}
+
+// BeginAttempt consumes the target's one-time execution grant.
+func (h *CleanupCoordinationHandler) BeginAttempt(w http.ResponseWriter, r *http.Request) {
+	h.maintenanceTransition(w, r, guard.BeginDeletionAttempt)
+}
+
+// CompleteAttempt records the observed transport result without releasing scope.
+func (h *CleanupCoordinationHandler) CompleteAttempt(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		guard.CoordinationRequest
+		Outcome string `json:"outcome"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.CoordinationRequest) {
+		return
+	}
+	if err := guard.CompleteDeletionAttempt(h.database(), body.CoordinationRequest, body.Outcome); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
+}
+
+// BindUpload persists the Registry's exact upload identity before forwarding it.
+func (h *CleanupCoordinationHandler) BindUpload(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		guard.CoordinationRequest
+		Repository string `json:"repository"`
+		UploadID   string `json:"upload_id"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.CoordinationRequest) {
+		return
+	}
+	if err := guard.BindRegistryUpload(h.database(), body.CoordinationRequest, body.Repository, body.UploadID); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
+}
+
+// LookupUpload resolves an existing upload under the server-selected store.
+func (h *CleanupCoordinationHandler) LookupUpload(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Generation string `json:"generation"`
+		Repository string `json:"repository"`
+		UploadID   string `json:"upload_id"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	binding, err := guard.LookupRegistryUpload(h.database(), chi.URLParam(r, "storage_id"), body.Generation, body.Repository, body.UploadID)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol   int                       `json:"protocol"`
+		Binding    guard.CoordinationRequest `json:"binding"`
+		Repository string                    `json:"repository"`
+		UploadID   string                    `json:"upload_id"`
+	}{1, binding, body.Repository, body.UploadID})
+}
+
+// AcquireUpload admits only a continuation of a recorded upload session.
+func (h *CleanupCoordinationHandler) AcquireUpload(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Parent  guard.CoordinationRequest `json:"parent"`
+		Request guard.CoordinationRequest `json:"request"`
+		Closing *bool                     `json:"closing"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.Parent) {
+		return
+	}
+	body.Request.StorageID = body.Parent.StorageID
+	if body.Closing == nil {
+		httputil.ReturnError(r, w, 400, "UPLOAD_PHASE_REQUIRED")
+		return
+	}
+	created, err := guard.AcquireUploadRequest(h.database(), body.Parent, body.Request, *body.Closing)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol      int  `json:"protocol"`
+		NewlyAdmitted bool `json:"newly_admitted"`
+	}{1, created})
+}
+
+// FinishUpload keeps the upload parent until the closing request is confirmed.
+func (h *CleanupCoordinationHandler) FinishUpload(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Parent  guard.CoordinationRequest `json:"parent"`
+		Request guard.CoordinationRequest `json:"request"`
+		Outcome string                    `json:"outcome"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.Parent) {
+		return
+	}
+	body.Request.StorageID = body.Parent.StorageID
+	if body.Outcome == "" {
+		httputil.ReturnError(r, w, 400, "CONFIRMATION_REQUIRED")
+		return
+	}
+	if err := guard.RecordUploadRequest(h.database(), body.Parent, body.Request, body.Outcome); err != nil {
 		coordinationError(w, r, err)
 		return
 	}

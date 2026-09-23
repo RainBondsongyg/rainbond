@@ -710,6 +710,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.coordinated-registry-delete-gc",
+      "title": "Verify coordinated deletion and separate GC against isolated real Registry",
+      "title_zh": "Verify coordinated deletion and separate GC against isolated real Registry",
+      "interface_type": "workflow",
+      "interface": "Region coordination API and Registry sidecar",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/coordinator.go",
+        "api/controller/cleanup_coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_registryproxy_test.go",
+          "selector": "TestCoordinatedRegistryRealDeletionAndGC"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.coordination-route-auth",
       "title": "Require Region authentication for every coordination route",
       "title_zh": "Require Region authentication for every coordination route",
@@ -782,6 +801,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.registry-delete-permit",
+      "title": "Bind registry deletion permits to immutable targets and expiry",
+      "title_zh": "Bind registry deletion permits to immutable targets and expiry",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.VerifyRegistryDeletionPermit",
+      "code_paths": [
+        "pkg/cleanup/deletion_permit.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/deletion_permit_test.go",
+          "selector": "TestRegistryDeletionPermitBindsOriginalTargetAndExpiry"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registry-request-scope",
       "title": "Reject ambiguous Registry paths and direct blob deletion",
       "title_zh": "Reject ambiguous Registry paths and direct blob deletion",
@@ -794,6 +831,42 @@
         {
           "path": "pkg/cleanup/registryproxy/request_test.go",
           "selector": "TestRegistryProxyRejectsAmbiguousPathsAndUnselectedDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.registry-stream-admission",
+      "title": "Require admission before forwarding mutations without credential leakage",
+      "title_zh": "Require admission before forwarding mutations without credential leakage",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/registryproxy.Proxy.ServeHTTP",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/proxy.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registryproxy/proxy_test.go",
+          "selector": "TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.registry-upload-lifecycle",
+      "title": "Keep upload leases across parts and drain existing sessions safely",
+      "title_zh": "Keep upload leases across parts and drain existing sessions safely",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.AcquireUploadRequest",
+      "code_paths": [
+        "pkg/cleanup/upload_coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/upload_coordination_test.go",
+          "selector": "TestUploadSessionRemainsProtectedBetweenParts"
         }
       ],
       "test_type": "regression",

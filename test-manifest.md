@@ -43,11 +43,15 @@
 | rainbond.builder.mirror-docker-ref-rewrite | docker daemon pulls rewrite docker.io refs to mirrors with fallback order | active | unit | builder/sources.mirrorPullRefs | builder/sources/mirror_hosts_test.go::TestMirrorPullRefs |
 | rainbond.builder.mirror-merge-manual-priority | Manual REGISTRY_MIRRORS take priority over dynamic mirrors with host dedup | active | unit | builder/sources.mergeMirrors | builder/sources/mirror_merge_test.go::TestMergeMirrors |
 | rainbond.builder.registered-worker-dispatch | 已注册 worker 分发时不再误报未知任务 | active | regression | builder/exector.exectorManager.RunTask | builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker |
+| rainbond.cleanup.coordinated-registry-delete-gc | Verify coordinated deletion and separate GC against isolated real Registry | active | integration | Region coordination API and Registry sidecar | api/controller/cleanup_registryproxy_test.go::TestCoordinatedRegistryRealDeletionAndGC |
 | rainbond.cleanup.coordination-route-auth | Require Region authentication for every coordination route | active | regression | /v2/cleanup/stores/{storage_id}/operations | api/api_routers/version2/cleanup_coordination_test.go::TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication |
 | rainbond.cleanup.durable-coordination | Persist coordinated operations across restarts and conflicts | active | regression | pkg/cleanup.AcquireOperation | pkg/cleanup/coordination_test.go::TestPersistentCoordinationConflictsAndRecovery |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
+| rainbond.cleanup.registry-delete-permit | Bind registry deletion permits to immutable targets and expiry | active | regression | pkg/cleanup.VerifyRegistryDeletionPermit | pkg/cleanup/deletion_permit_test.go::TestRegistryDeletionPermitBindsOriginalTargetAndExpiry |
 | rainbond.cleanup.registry-request-scope | Reject ambiguous Registry paths and direct blob deletion | active | regression | pkg/cleanup/registryproxy.ClassifyRequest | pkg/cleanup/registryproxy/request_test.go::TestRegistryProxyRejectsAmbiguousPathsAndUnselectedDeletion |
+| rainbond.cleanup.registry-stream-admission | Require admission before forwarding mutations without credential leakage | active | regression | pkg/cleanup/registryproxy.Proxy.ServeHTTP | pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth |
+| rainbond.cleanup.registry-upload-lifecycle | Keep upload leases across parts and drain existing sessions safely | active | regression | pkg/cleanup.AcquireUploadRequest | pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts |
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
 | rainbond.cleanup.version-update-no-resurrection | Version callbacks preserve activation and never recreate retired records | active | regression | VersionInfoDaoImpl.UpdateModel | db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation |
@@ -900,6 +904,16 @@
 - 代码路径: `builder/exector/exector.go`
 - 测试路径: `builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker`
 
+### Verify coordinated deletion and separate GC against isolated real Registry
+
+- Capability ID: `rainbond.cleanup.coordinated-registry-delete-gc`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `Region coordination API and Registry sidecar`
+- 代码路径: `pkg/cleanup/registryproxy/coordinator.go`, `api/controller/cleanup_coordination.go`
+- 测试路径: `api/controller/cleanup_registryproxy_test.go::TestCoordinatedRegistryRealDeletionAndGC`
+
 ### Require Region authentication for every coordination route
 
 - Capability ID: `rainbond.cleanup.coordination-route-auth`
@@ -940,6 +954,16 @@
 - 代码路径: `pkg/cleanup/maintenance.go`
 - 测试路径: `pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation`
 
+### Bind registry deletion permits to immutable targets and expiry
+
+- Capability ID: `rainbond.cleanup.registry-delete-permit`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.VerifyRegistryDeletionPermit`
+- 代码路径: `pkg/cleanup/deletion_permit.go`
+- 测试路径: `pkg/cleanup/deletion_permit_test.go::TestRegistryDeletionPermitBindsOriginalTargetAndExpiry`
+
 ### Reject ambiguous Registry paths and direct blob deletion
 
 - Capability ID: `rainbond.cleanup.registry-request-scope`
@@ -949,6 +973,26 @@
 - 业务入口: `pkg/cleanup/registryproxy.ClassifyRequest`
 - 代码路径: `pkg/cleanup/registryproxy/request.go`
 - 测试路径: `pkg/cleanup/registryproxy/request_test.go::TestRegistryProxyRejectsAmbiguousPathsAndUnselectedDeletion`
+
+### Require admission before forwarding mutations without credential leakage
+
+- Capability ID: `rainbond.cleanup.registry-stream-admission`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup/registryproxy.Proxy.ServeHTTP`
+- 代码路径: `pkg/cleanup/registryproxy/proxy.go`
+- 测试路径: `pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth`
+
+### Keep upload leases across parts and drain existing sessions safely
+
+- Capability ID: `rainbond.cleanup.registry-upload-lifecycle`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.AcquireUploadRequest`
+- 代码路径: `pkg/cleanup/upload_coordination.go`
+- 测试路径: `pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts`
 
 ### Consume deletion permission once and retain verification protection
 

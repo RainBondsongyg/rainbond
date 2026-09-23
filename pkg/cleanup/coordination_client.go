@@ -16,6 +16,9 @@ import (
 var ErrCoordinationUnavailable = errors.New("cleanup coordination unavailable")
 
 // ErrCoordinationDenied indicates that the internal participant was rejected.
+// ErrCoordinationNotFound means no matching durable operation was recorded.
+var ErrCoordinationNotFound = errors.New("cleanup coordination operation not found")
+
 var ErrCoordinationDenied = errors.New("cleanup coordination authorization denied")
 
 // CoordinationClient is used by participants without direct Region DB access.
@@ -39,10 +42,14 @@ func NewCoordinationClient(endpoint, token string, allowHTTP bool) (*Coordinatio
 type coordinationResponse struct {
 	Msg  string `json:"msg"`
 	Bean struct {
-		Protocol      int    `json:"protocol"`
-		NewlyAdmitted *bool  `json:"newly_admitted"`
-		Recorded      *bool  `json:"recorded"`
-		State         string `json:"state"`
+		Protocol      int                  `json:"protocol"`
+		NewlyAdmitted *bool                `json:"newly_admitted"`
+		Recorded      *bool                `json:"recorded"`
+		State         string               `json:"state"`
+		Permit        string               `json:"permit"`
+		Binding       *CoordinationRequest `json:"binding"`
+		Repository    string               `json:"repository"`
+		UploadID      string               `json:"upload_id"`
 	} `json:"bean"`
 }
 
@@ -55,6 +62,10 @@ func (c *CoordinationClient) call(ctx context.Context, r CoordinationRequest, ac
 	if action != "" {
 		path += "/" + url.PathEscape(r.OperationID) + "/" + action
 	}
+	return c.callPath(ctx, path, body)
+}
+func (c *CoordinationClient) callPath(ctx context.Context, path string, body interface{}) (coordinationResponse, error) {
+	var result coordinationResponse
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return result, ErrCoordinationChanged
@@ -81,6 +92,9 @@ func (c *CoordinationClient) call(ctx context.Context, r CoordinationRequest, ac
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if decoder.Decode(&result) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return result, ErrCoordinationUnavailable
+	}
+	if response.StatusCode == 404 && result.Msg == "COORDINATION_NOT_FOUND" {
+		return result, ErrCoordinationNotFound
 	}
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == 409 {
@@ -200,4 +214,102 @@ func (c *CoordinationClient) FinishRestore(ctx context.Context, r CoordinationRe
 		CoordinationRequest
 		Confirmed bool `json:"confirmed"`
 	}{r, confirmed})
+}
+
+// RegistryPermit requests delegation only for the original active manifest target.
+func (c *CoordinationClient) RegistryPermit(ctx context.Context, r CoordinationRequest) (string, error) {
+	response, err := c.call(ctx, r, "registry-permit", r)
+	if err != nil {
+		return "", err
+	}
+	if response.Bean.Permit == "" {
+		return "", ErrCoordinationUnavailable
+	}
+	return response.Bean.Permit, nil
+}
+
+// BeginDeletionAttempt consumes a durable one-time Registry forwarding grant.
+func (c *CoordinationClient) BeginDeletionAttempt(ctx context.Context, r CoordinationRequest) error {
+	return c.record(ctx, r, "attempt", r)
+}
+
+// CompleteDeletionAttempt records the observed response while retaining the fence.
+func (c *CoordinationClient) CompleteDeletionAttempt(ctx context.Context, r CoordinationRequest, outcome string) error {
+	return c.record(ctx, r, "attempt/complete", struct {
+		CoordinationRequest
+		Outcome string `json:"outcome"`
+	}{r, outcome})
+}
+
+// BindRegistryUpload durably associates the admitted request with its upload ID.
+func (c *CoordinationClient) BindRegistryUpload(ctx context.Context, r CoordinationRequest, repository, id string) error {
+	return c.record(ctx, r, "upload", struct {
+		CoordinationRequest
+		Repository string `json:"repository"`
+		UploadID   string `json:"upload_id"`
+	}{r, repository, id})
+}
+
+// LookupRegistryUpload resolves a previously admitted upload after process restart.
+func (c *CoordinationClient) LookupRegistryUpload(ctx context.Context, storage, generation, repository, id string) (CoordinationRequest, error) {
+	if _, err := registryUploadKey(storage, generation, repository, id); err != nil {
+		return CoordinationRequest{}, err
+	}
+	body := struct {
+		Generation string `json:"generation"`
+		Repository string `json:"repository"`
+		UploadID   string `json:"upload_id"`
+	}{generation, repository, id}
+	response, err := c.callPath(ctx, "/v2/cleanup/stores/"+url.PathEscape(storage)+"/uploads/lookup", body)
+	if err != nil {
+		return CoordinationRequest{}, err
+	}
+	binding := response.Bean.Binding
+	if binding == nil {
+		return CoordinationRequest{}, ErrCoordinationUnavailable
+	}
+	binding.StorageID = storage
+	if !binding.valid() || binding.Kind != "producer" || binding.Generation != generation || (binding.Scope != "*" && binding.Scope != repository) || response.Bean.Repository != repository || response.Bean.UploadID != id {
+		return CoordinationRequest{}, ErrCoordinationUnavailable
+	}
+	return *binding, nil
+}
+
+// AcquireUploadRequest permits only a request belonging to an existing session.
+func (c *CoordinationClient) AcquireUploadRequest(ctx context.Context, parent, r CoordinationRequest, closing bool) (bool, error) {
+	if !r.valid() || r.StorageID != parent.StorageID || r.Generation != parent.Generation {
+		return false, ErrCoordinationChanged
+	}
+	body := struct {
+		Parent  CoordinationRequest `json:"parent"`
+		Request CoordinationRequest `json:"request"`
+		Closing bool                `json:"closing"`
+	}{parent, r, closing}
+	response, err := c.call(ctx, parent, "upload/requests", body)
+	if err != nil {
+		return false, err
+	}
+	if response.Bean.NewlyAdmitted == nil {
+		return false, ErrCoordinationUnavailable
+	}
+	return *response.Bean.NewlyAdmitted, nil
+}
+
+// FinishUploadRequest records a part outcome and preserves the parent lifecycle.
+func (c *CoordinationClient) FinishUploadRequest(ctx context.Context, parent, r CoordinationRequest, confirmed bool) error {
+	outcome := "unknown"
+	if confirmed {
+		outcome = "succeeded"
+	}
+	return c.RecordUploadRequest(ctx, parent, r, outcome)
+}
+
+// RecordUploadRequest records an actual success, rejection or unknown result.
+func (c *CoordinationClient) RecordUploadRequest(ctx context.Context, parent, r CoordinationRequest, outcome string) error {
+	body := struct {
+		Parent  CoordinationRequest `json:"parent"`
+		Request CoordinationRequest `json:"request"`
+		Outcome string              `json:"outcome"`
+	}{parent, r, outcome}
+	return c.record(ctx, parent, "upload/requests/finish", body)
 }
