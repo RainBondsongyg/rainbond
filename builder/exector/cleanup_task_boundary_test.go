@@ -1,6 +1,7 @@
 package exector
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -112,5 +113,58 @@ func TestMarketSlugTaskWaitsForCompletion(t *testing.T) {
 	case <-returned:
 		t.Fatal("market task returned while completion was still in flight")
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+type failedImageShareStore struct {
+	dao.KeyValueDao
+	failure error
+}
+
+func (s failedImageShareStore) Put(string, string) error { return s.failure }
+
+type imageShareStoreDB struct {
+	db.Manager
+	store dao.KeyValueDao
+}
+
+func (d imageShareStoreDB) KeyValueDao() dao.KeyValueDao { return d.store }
+func TestImageShareCannotReportSuccessWhenReceiptPersistenceFails(t *testing.T) {
+	failure := errors.New("owned persistence failure")
+	db.SetTestManager(imageShareStoreDB{store: failedImageShareStore{failure: failure}})
+	defer db.SetTestManager(nil)
+	item := &ImageShareItem{ShareID: "owned-publication", Logger: event.NewLogger("owned-event", make(chan []byte, 20))}
+	if err := item.UpdateShareStatus("success"); !errors.Is(err, failure) {
+		t.Fatal("lost share receipt reported success", err)
+	}
+}
+
+func TestPluginShareCannotReportSuccessWhenReceiptPersistenceFails(t *testing.T) {
+	failure := errors.New("owned persistence failure")
+	db.SetTestManager(imageShareStoreDB{store: failedImageShareStore{failure: failure}})
+	defer db.SetTestManager(nil)
+	item := &PluginShareItem{ShareID: "owned-plugin-publication", Logger: event.NewLogger("owned-event", make(chan []byte, 20))}
+	if err := item.updateShareStatus("success"); !errors.Is(err, failure) {
+		t.Fatal("lost plugin share receipt reported success", err)
+	}
+}
+
+type failingCleanupWorker struct {
+	stubTaskWorker
+	failure error
+}
+
+func (w *failingCleanupWorker) Run(time.Duration) error { return w.failure }
+func TestRegisteredWorkerReturnsExecutionFailure(t *testing.T) {
+	failure := errors.New("owned worker failure")
+	taskType := "owned-failing-cleanup-worker"
+	RegisterWorker(taskType, func([]byte, *exectorManager) (TaskWorker, error) {
+		return &failingCleanupWorker{stubTaskWorker: stubTaskWorker{logger: event.NewLogger("owned-event", make(chan []byte, 20))}, failure: failure}, nil
+	})
+	defer delete(workerCreaterList, taskType)
+	event.NewTestManager(&vmActivationLogs{})
+	defer event.NewTestManager(nil)
+	if err := (&exectorManager{}).exec(&pb.TaskMessage{TaskId: "owned-task", TaskType: taskType}); !errors.Is(err, failure) {
+		t.Fatal("failed worker reported success", err)
 	}
 }

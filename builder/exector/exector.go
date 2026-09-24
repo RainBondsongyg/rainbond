@@ -293,7 +293,7 @@ func (e *exectorManager) RunTask(task *pb.TaskMessage) {
 	}
 }
 
-func (e *exectorManager) exec(task *pb.TaskMessage) error {
+func (e *exectorManager) exec(task *pb.TaskMessage) (resultErr error) {
 	creator, ok := workerCreaterList[task.TaskType]
 	if !ok {
 		return fmt.Errorf("`%s` tasktype can't support", task.TaskType)
@@ -309,14 +309,29 @@ func (e *exectorManager) exec(task *pb.TaskMessage) error {
 			fmt.Println(r)
 			debug.PrintStack()
 			worker.GetLogger().Error(util.Translation("Please try again or contact customer service"), map[string]string{"step": "callback", "status": "failure"})
-			worker.ErrorCallBack(fmt.Errorf("%s", r))
+			resultErr = fmt.Errorf("native worker panicked")
+			worker.ErrorCallBack(resultErr)
 		}
 	}()
+	completed := false
+	if task.TaskType == "share-plugin" {
+		admission, err := admitBuild(db.GetManager().DB(), task.TaskType, task.TaskId, task.TaskBody)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := admission.finish(completed); err != nil {
+				resultErr = err
+			}
+		}()
+	}
 	if err := worker.Run(time.Minute * 10); err != nil {
-		logrus.Errorf("task type: %s; body: %s; run task: %+v", task.TaskType, task.TaskBody, err)
+		logrus.Errorf("native task execution failed: %s", task.TaskType)
 		MetricErrorTaskNum++
 		worker.ErrorCallBack(err)
+		return err
 	}
+	completed = true
 	return nil
 }
 
@@ -816,6 +831,17 @@ func (e *exectorManager) imageShare(task *pb.TaskMessage) {
 			i.Logger.Error("后端服务开小差，请重试或联系客服", map[string]string{"step": "callback", "status": "failure"})
 		}
 	}()
+	admission, admissionErr := admitBuild(db.GetManager().DB(), "image-share", task.TaskId, task.TaskBody)
+	if admissionErr != nil {
+		i.Logger.Error("Image publication blocked by cleanup coordination", map[string]string{"step": "callback", "status": "failure"})
+		return
+	}
+	confirmed := false
+	defer func() {
+		if err := admission.finish(confirmed); err != nil {
+			logrus.Error("Image publication coordination outcome was not persisted")
+		}
+	}()
 	status, err = executeImageShareOnce(i.ShareService)
 	if err != nil {
 		logrus.Errorf("image share error: %s", err.Error())
@@ -824,7 +850,9 @@ func (e *exectorManager) imageShare(task *pb.TaskMessage) {
 	}
 	if err := i.UpdateShareStatus(status); err != nil {
 		logrus.Debugf("Add image share result error: %s", err.Error())
+		return
 	}
+	confirmed = status == "success"
 }
 
 func executeImageShareOnce(share func() error) (string, error) {

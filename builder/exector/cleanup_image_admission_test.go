@@ -103,6 +103,14 @@ func TestSourceBuildAdmissionUsesSeparateImmutableIdentity(t *testing.T) {
 	if _, err := admitBuild(database, "image", "same-task", []byte("same-input")); err != nil {
 		t.Fatal("task types collided", err)
 	}
+	if _, err := admitBuild(database, "image-share", "same-task", []byte("same-input")); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"plugin-image", "plugin-dockerfile", "share-plugin"} {
+		if _, err := admitBuild(database, kind, "same-task", []byte("same-input")); err != nil {
+			t.Fatal(kind, err)
+		}
+	}
 	if _, err := admitBuild(database, "vm", "same-task", []byte("same-input")); err != nil {
 		t.Fatal("VM task admission failed", err)
 	}

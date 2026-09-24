@@ -308,3 +308,78 @@ func TestRegistryParticipantEndpointRejectsClaimedRuntimeFacts(t *testing.T) {
 		t.Fatal("registration enabled cleanup", err)
 	}
 }
+
+func TestRegistryReferenceAuditUsesBoundAuthenticatedOperation(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "references.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}, &model.TenantPluginBuildVersion{}, &model.K8sResource{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&model.CleanupStorage{StorageID: "owned", Generation: "one", Mode: "ready"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	selected := guard.CoordinationRequest{StorageID: "owned", Generation: "one", OperationID: "delete", Owner: "owner", Kind: "delete", Scope: "app", Target: "sha256:" + strings.Repeat("a", 64), Fingerprint: "confirmation"}
+	if _, err := guard.AcquireOperation(database, selected); err != nil {
+		t.Fatal(err)
+	}
+	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }}
+	router := chi.NewRouter()
+	router.Use(middleware.FullToken)
+	router.Post("/stores/{storage_id}/operations/{operation_id}/registry-references", h.RegistryReferences)
+	router.Post("/stores/{storage_id}/reference-inventory", h.RegistryReferenceInventory)
+	t.Setenv("TOKEN", "isolated-reference-fixture")
+	invoke := func(auth string) *httptest.ResponseRecorder {
+		raw, _ := json.Marshal(struct {
+			guard.CoordinationRequest
+			Tags []string `json:"tags"`
+		}{selected, []string{"v1"}})
+		request := httptest.NewRequest("POST", "/stores/owned/operations/delete/registry-references", bytes.NewReader(raw))
+		request.Header.Set("Authorization", auth)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+	if response := invoke(""); response.Code == 200 {
+		t.Fatal("unauthenticated reference audit")
+	}
+	for _, referenced := range []bool{false, true} {
+		if referenced {
+			if err := database.Create(&model.VersionInfo{ImageName: "goodrain.me/app:v1"}).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+		response := invoke("Token isolated-reference-fixture")
+		var body struct {
+			Bean struct {
+				Protocol   int  `json:"protocol"`
+				Complete   bool `json:"region_records_complete"`
+				Referenced bool `json:"referenced"`
+			} `json:"bean"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &body) != nil || body.Bean.Protocol != 1 || !body.Bean.Complete || body.Bean.Referenced != referenced {
+			t.Fatal("incorrect reference audit", response.Code)
+		}
+	}
+	request := httptest.NewRequest("POST", "/stores/owned/reference-inventory", strings.NewReader(`{"generation":"one"}`))
+	request.Header.Set("Authorization", "Token isolated-reference-fixture")
+	snapshot := httptest.NewRecorder()
+	router.ServeHTTP(snapshot, request)
+	var inventory struct {
+		Bean struct {
+			StorageID  string `json:"storage_id"`
+			Generation string `json:"generation"`
+			guard.RegionReferenceInventory
+		} `json:"bean"`
+	}
+	if snapshot.Code != 200 || json.Unmarshal(snapshot.Body.Bytes(), &inventory) != nil || inventory.Bean.StorageID != "owned" || inventory.Bean.Generation != "one" || !inventory.Bean.Complete || len(inventory.Bean.Images) != 1 {
+		t.Fatal("invalid advisory reference inventory", snapshot.Code)
+	}
+	selected.Owner = "other"
+	if response := invoke("Token isolated-reference-fixture"); response.Code == 200 {
+		t.Fatal("foreign admission accepted")
+	}
+}

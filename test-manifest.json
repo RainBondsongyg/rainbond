@@ -933,6 +933,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.plugin-version-reference-coordination",
+      "title": "Plugin version writes respect selected deletion and cannot resurrect records",
+      "title_zh": "Plugin version writes respect selected deletion and cannot resurrect records",
+      "interface_type": "workflow",
+      "interface": "PluginBuildVersionDaoImpl",
+      "code_paths": [
+        "db/mysql/dao/plugin_cleanup.go"
+      ],
+      "tests": [
+        {
+          "path": "db/mysql/dao/version_cleanup_test.go",
+          "selector": "TestPluginVersionWritesRespectDeletionAndNeverResurrect"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registered-storage-discovery",
       "title": "Storage discovery rejects incomplete enrollment",
       "title_zh": "Storage discovery rejects incomplete enrollment",

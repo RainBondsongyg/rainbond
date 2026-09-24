@@ -186,3 +186,41 @@ func TestAdmittedBuildVersionPersistsDuringGCDrain(t *testing.T) {
 		t.Fatal("version persistence prematurely released producer", err)
 	}
 }
+
+// capability_id: rainbond.cleanup.plugin-version-reference-coordination
+func TestPluginVersionWritesRespectDeletionAndNeverResurrect(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "plugins.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.TenantPluginBuildVersion{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&model.CleanupStorage{StorageID: "owned", Generation: "one", Mode: "ready"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	versions := &PluginBuildVersionDaoImpl{DB: database}
+	record := &model.TenantPluginBuildVersion{PluginID: "plugin", VersionID: "v1", DeployVersion: "build", BuildLocalImage: "goodrain.me/plugin/local:latest"}
+	if err := versions.AddModel(record); err != nil {
+		t.Fatal(err)
+	}
+	selected := cleanupguard.CoordinationRequest{StorageID: "owned", Generation: "one", OperationID: "delete", Owner: "cleanup", Kind: "delete", Scope: "plugin/local", Target: "sha256:" + strings.Repeat("a", 64), Fingerprint: "selected"}
+	if _, err := cleanupguard.AcquireOperation(database, selected); err != nil {
+		t.Fatal(err)
+	}
+	record.Status = "complete"
+	if err := versions.UpdateModel(record); !errors.Is(err, cleanupguard.ErrCoordinationBusy) {
+		t.Fatal("plugin reference changed during deletion", err)
+	}
+	if err := cleanupguard.FinishOperation(database, selected, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Delete(record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := versions.UpdateModel(record); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatal("late plugin callback recreated deleted version", err)
+	}
+}

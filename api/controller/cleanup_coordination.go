@@ -290,6 +290,56 @@ func (h *CleanupCoordinationHandler) FinishRestore(w http.ResponseWriter, r *htt
 	}{1, true})
 }
 
+// RegistryReferenceInventory returns advisory image identities for a ready store.
+func (h *CleanupCoordinationHandler) RegistryReferenceInventory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Generation string `json:"generation"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	if err := r.Context().Err(); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	storage := chi.URLParam(r, "storage_id")
+	result, err := guard.ReadRegionReferenceInventory(h.database(), storage, body.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol   int    `json:"protocol"`
+		StorageID  string `json:"storage_id"`
+		Generation string `json:"generation"`
+		guard.RegionReferenceInventory
+	}{1, storage, body.Generation, result})
+}
+
+// RegistryReferences audits retained Region records while the selected scope is held.
+func (h *CleanupCoordinationHandler) RegistryReferences(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		guard.CoordinationRequest
+		Tags []string `json:"tags"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.CoordinationRequest) {
+		return
+	}
+	if err := r.Context().Err(); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	result, err := guard.AuditRegionManifestReferences(h.database(), body.CoordinationRequest, body.Tags)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int `json:"protocol"`
+		guard.RegionReferenceAudit
+	}{1, result})
+}
+
 // RegistryPermit issues a short-lived credential for an active immutable target.
 func (h *CleanupCoordinationHandler) RegistryPermit(w http.ResponseWriter, r *http.Request) {
 	var request guard.CoordinationRequest
