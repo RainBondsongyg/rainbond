@@ -374,3 +374,24 @@ func (c *CoordinationClient) PrepareRegistry(ctx context.Context, pod, uid strin
 	}
 	return RegistryPreparation{Registration: *binding, Storage: *storage, RegistryContainer: response.Bean.RegistryContainer}, nil
 }
+
+// RegisterRegistryParticipant submits only locators, not claimed container facts.
+func (c *CoordinationClient) RegisterRegistryParticipant(ctx context.Context, storage, generation, owner, pod, uid string) error {
+	if !coordinationIdentity.MatchString(storage) || !coordinationIdentity.MatchString(generation) {
+		return ErrCoordinationChanged
+	}
+	body := struct {
+		Generation string `json:"generation"`
+		Owner      string `json:"owner"`
+		Pod        string `json:"pod"`
+		PodUID     string `json:"pod_uid"`
+	}{generation, owner, pod, uid}
+	response, err := c.callPath(ctx, "/v2/cleanup/stores/"+url.PathEscape(storage)+"/participants/registry", body)
+	if err != nil {
+		return err
+	}
+	if response.Bean.Recorded == nil || !*response.Bean.Recorded {
+		return ErrCoordinationUnavailable
+	}
+	return nil
+}

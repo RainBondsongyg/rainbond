@@ -5,7 +5,7 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
-func changeDeletionAttempt(database *gorm.DB, r CoordinationRequest, change func(*model.CleanupOperation) error) error {
+func changeDeletionAttempt(database *gorm.DB, r CoordinationRequest, observation bool, change func(*model.CleanupOperation) error) error {
 	if !r.valid() || r.Kind != "delete" {
 		return ErrCoordinationChanged
 	}
@@ -18,7 +18,7 @@ func changeDeletionAttempt(database *gorm.DB, r CoordinationRequest, change func
 	if err != nil {
 		return err
 	}
-	if store.Mode != "ready" && store.Mode != "draining" {
+	if !observation && store.Mode != "ready" && store.Mode != "draining" {
 		return ErrCoordinationBusy
 	}
 	var op model.CleanupOperation
@@ -51,7 +51,7 @@ func changeDeletionAttempt(database *gorm.DB, r CoordinationRequest, change func
 // BeginDeletionAttempt consumes the original target's single execution grant.
 // Once consumed, losing a response never authorizes a second DELETE request.
 func BeginDeletionAttempt(database *gorm.DB, r CoordinationRequest) error {
-	return changeDeletionAttempt(database, r, func(op *model.CleanupOperation) error {
+	return changeDeletionAttempt(database, r, false, func(op *model.CleanupOperation) error {
 		if op.State == "executing" || op.State == "applied" || op.State == "rejected" {
 			return ErrCoordinationUncertain
 		}
@@ -69,7 +69,7 @@ func CompleteDeletionAttempt(database *gorm.DB, r CoordinationRequest, outcome s
 	if outcome != "applied" && outcome != "rejected" && outcome != "unknown" {
 		return ErrCoordinationChanged
 	}
-	return changeDeletionAttempt(database, r, func(op *model.CleanupOperation) error {
+	return changeDeletionAttempt(database, r, true, func(op *model.CleanupOperation) error {
 		if op.State != "executing" {
 			return ErrCoordinationChanged
 		}

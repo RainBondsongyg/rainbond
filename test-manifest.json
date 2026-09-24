@@ -819,6 +819,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.participant-replacement",
+      "title": "Participant replacement preserves active deletion protection",
+      "title_zh": "Participant replacement preserves active deletion protection",
+      "interface_type": "workflow",
+      "interface": "cleanup.RegisterParticipant",
+      "code_paths": [
+        "pkg/cleanup/participant.go",
+        "pkg/cleanup/deletion_attempt.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/participant_test.go",
+          "selector": "TestParticipantReplacementWithdrawsReadinessWithoutLosingDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registry-delete-permit",
       "title": "Bind registry deletion permits to immutable targets and expiry",
       "title_zh": "Bind registry deletion permits to immutable targets and expiry",

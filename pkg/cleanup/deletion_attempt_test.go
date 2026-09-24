@@ -3,6 +3,8 @@ package cleanup
 import (
 	"errors"
 	"testing"
+
+	"github.com/goodrain/rainbond/db/model"
 )
 
 // capability_id: rainbond.cleanup.single-deletion-attempt
@@ -51,5 +53,31 @@ func TestUnknownDeletionAttemptCannotBecomeSuccessByRetry(t *testing.T) {
 	}
 	if err := FinishOperation(database, r, true); !errors.Is(err, ErrCoordinationUncertain) {
 		t.Fatal("unknown result released", err)
+	}
+}
+
+func TestCompletedAttemptCanBeRecordedAfterReadinessWithdrawal(t *testing.T) {
+	database, _ := coordinationDB(t)
+	r := operation("selected", "delete", "app/a")
+	if _, err := AcquireOperation(database, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := BeginDeletionAttempt(database, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Model(&model.CleanupStorage{}).Where("storage_id = ?", r.StorageID).Update("mode", "collecting").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := CompleteDeletionAttempt(database, r, "applied"); err != nil {
+		t.Fatal("observed result lost after readiness withdrawal", err)
+	}
+	if err := BeginDeletionAttempt(database, r); !errors.Is(err, ErrCoordinationBusy) {
+		t.Fatal("withdrawal still granted execution", err)
+	}
+	if err := FinishOperation(database, r, true); err != nil {
+		t.Fatal("verified existing operation cannot finish", err)
+	}
+	if _, err := AcquireOperation(database, operation("new-delete", "delete", "app/a")); !errors.Is(err, ErrCoordinationBusy) {
+		t.Fatal("recording an outcome enabled new deletion", err)
 	}
 }

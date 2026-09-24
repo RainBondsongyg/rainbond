@@ -77,7 +77,7 @@ func run(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("registry-coordinator", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var binding coordination.StorageRegistration
-	var listen, root, upstream, api, credential, owner, serverCert, serverKey string
+	var listen, root, upstream, api, credential, owner, serverCert, serverKey, pod, podUID string
 	var initialize, allowHTTP bool
 	var controlTLS, upstreamTLS tlsFiles
 	flags.StringVar(&listen, "listen", ":5001", "proxy listen address")
@@ -89,7 +89,9 @@ func run(ctx context.Context, args []string) error {
 	flags.StringVar(&upstream, "upstream", "http://127.0.0.1:5000", "loopback Registry origin")
 	flags.StringVar(&api, "coordination-api", "", "trusted Region API origin")
 	flags.StringVar(&credential, "credential-file", "", "mounted Region coordination credential")
-	flags.StringVar(&owner, "owner", "", "instance identity supplied by the installer")
+	flags.StringVar(&owner, "owner", "", "instance identity prefix supplied by the installer")
+	flags.StringVar(&pod, "pod-name", os.Getenv("POD_NAME"), "Pod name from the downward API")
+	flags.StringVar(&podUID, "pod-uid", os.Getenv("POD_UID"), "Pod UID from the downward API")
 	flags.StringVar(&serverCert, "tls-cert-file", "", "public listener TLS certificate")
 	flags.StringVar(&serverKey, "tls-key-file", "", "public listener TLS key")
 	flags.BoolVar(&initialize, "initialize-storage-identity", false, "installer-only atomic identity initialization")
@@ -105,9 +107,14 @@ func run(ctx context.Context, args []string) error {
 	if initialize {
 		return registryproxy.InitializeStorageIdentity(root, binding)
 	}
-	if owner == "" || (serverCert == "") != (serverKey == "") {
+	if owner == "" || len(owner) > 95 || strings.ContainsAny(owner, "\r\n\x00") || pod == "" || podUID == "" || (serverCert == "") != (serverKey == "") {
 		return errConfiguration
 	}
+	nonce, err := coordination.NewActivationRevision()
+	if err != nil {
+		return errConfiguration
+	}
+	owner += ":" + nonce
 	token, err := readCredential(credential)
 	if err != nil {
 		return err
@@ -124,7 +131,7 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return errConfiguration
 	}
-	runtime, err := registryproxy.NewRuntime(registryproxy.RuntimeConfig{Root: root, Binding: binding, Upstream: upstream, Owner: owner, Backend: client, Transport: upstreamTransport, PermitKey: func() []byte {
+	runtime, err := registryproxy.NewRuntime(registryproxy.RuntimeConfig{Root: root, Binding: binding, Upstream: upstream, Owner: owner, Pod: pod, PodUID: podUID, Backend: client, Transport: upstreamTransport, PermitKey: func() []byte {
 		value, err := readCredential(credential)
 		if err != nil {
 			return nil

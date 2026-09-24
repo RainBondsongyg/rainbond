@@ -21,6 +21,7 @@ import (
 	httputil "github.com/goodrain/rainbond/util/http"
 	"github.com/jinzhu/gorm"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/kubernetes"
 )
 
 // CleanupCoordinationHandler is an internal Region API. Routes must always use
@@ -28,14 +29,15 @@ import (
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
 type CleanupCoordinationHandler struct {
-	database        func() *gorm.DB
-	permitKey       func() []byte
-	inspectRegistry func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
+	database           func() *gorm.DB
+	permitKey          func() []byte
+	inspectRegistry    func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
+	inspectParticipant func(context.Context, string, string, string, guard.StorageRegistration) (guard.ParticipantRegistration, error)
 }
 
 // NewCleanupCoordinationHandler uses the Region database manager.
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
-	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry}
+	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectParticipant: inspectSystemRegistryParticipant}
 }
 
 func coordinationError(w http.ResponseWriter, r *http.Request, err error) {
@@ -412,23 +414,37 @@ func (h *CleanupCoordinationHandler) StorageStatus(w http.ResponseWriter, r *htt
 	}{1, observation})
 }
 
-func inspectSystemRegistry(ctx context.Context, pod, uid string) (kubeidentity.RegistryPreparation, error) {
+func systemRegistryInspectionTarget() (kubernetes.Interface, string, string, error) {
 	component := k8s.Default()
 	configuration := configs.Default()
 	if component == nil || component.Clientset == nil || configuration.PublicConfig == nil || configuration.ServerConfig == nil {
-		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+		return nil, "", "", kubeidentity.ErrBinding
 	}
 	namespace := configuration.PublicConfig.RbdNamespace
 	endpoint, err := url.Parse(configuration.ServerConfig.RbdHub)
 	if err != nil || endpoint.User != nil || namespace == "" {
-		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+		return nil, "", "", kubeidentity.ErrBinding
 	}
 	host := endpoint.Hostname()
 	service := strings.Split(host, ".")[0]
 	if host != service && host != service+"."+namespace && host != service+"."+namespace+".svc" && host != service+"."+namespace+".svc.cluster.local" {
-		return kubeidentity.RegistryPreparation{}, kubeidentity.ErrBinding
+		return nil, "", "", kubeidentity.ErrBinding
 	}
-	return kubeidentity.InspectNativeRegistry(ctx, component.Clientset, namespace, service, pod, uid)
+	return component.Clientset, namespace, service, nil
+}
+func inspectSystemRegistry(ctx context.Context, pod, uid string) (kubeidentity.RegistryPreparation, error) {
+	client, namespace, service, err := systemRegistryInspectionTarget()
+	if err != nil {
+		return kubeidentity.RegistryPreparation{}, err
+	}
+	return kubeidentity.InspectNativeRegistry(ctx, client, namespace, service, pod, uid)
+}
+func inspectSystemRegistryParticipant(ctx context.Context, pod, uid, owner string, binding guard.StorageRegistration) (guard.ParticipantRegistration, error) {
+	client, namespace, service, err := systemRegistryInspectionTarget()
+	if err != nil {
+		return guard.ParticipantRegistration{}, err
+	}
+	return kubeidentity.InspectRegistryParticipant(ctx, client, namespace, service, pod, uid, owner, binding)
 }
 
 var registryPodUID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
@@ -472,4 +488,48 @@ func (h *CleanupCoordinationHandler) PrepareRegistry(w http.ResponseWriter, r *h
 		Storage      guard.StorageObservation  `json:"storage"`
 		Container    string                    `json:"registry_container"`
 	}{1, binding, status, observed.Container})
+}
+
+// RegisterRegistryParticipant accepts only runtime facts verified by the core.
+func (h *CleanupCoordinationHandler) RegisterRegistryParticipant(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Generation string `json:"generation"`
+		Owner      string `json:"owner"`
+		Pod        string `json:"pod"`
+		PodUID     string `json:"pod_uid"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	if len(validation.IsDNS1123Subdomain(body.Pod)) != 0 || !registryPodUID.MatchString(body.PodUID) || body.Owner == "" || len(body.Owner) > 128 {
+		httputil.ReturnError(r, w, 400, "INVALID_PARTICIPANT_REQUEST")
+		return
+	}
+	if h.inspectParticipant == nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	binding, err := guard.StorageBinding(h.database(), chi.URLParam(r, "storage_id"), body.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	observed, err := h.inspectParticipant(r.Context(), body.Pod, body.PodUID, body.Owner, binding)
+	if err != nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	fingerprint, _ := binding.Fingerprint()
+	if observed.StorageID != binding.StorageID || observed.Generation != binding.Generation || observed.Owner != body.Owner || observed.PodUID != body.PodUID || observed.Role != "registry-ingress" || observed.BindingFingerprint != fingerprint {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
+	if err := guard.RegisterParticipant(h.database(), observed); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
 }

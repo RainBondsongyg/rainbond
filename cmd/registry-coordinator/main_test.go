@@ -54,8 +54,12 @@ func TestCoordinatorRunsReadinessAndStopsWithContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v2/cleanup/stores/store/status" || r.Header.Get("Authorization") != "Token "+key {
+		if r.Header.Get("Authorization") != "Token "+key {
 			t.Error("wrong control-plane request")
+		}
+		if r.URL.Path == "/v2/cleanup/stores/store/participants/registry" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"bean": map[string]interface{}{"protocol": 1, "recorded": true}})
+			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"bean": map[string]interface{}{"protocol": 1, "storage": coordination.StorageObservation{StorageID: "store", Generation: "one", RegistrationFingerprint: fingerprint, Mode: "collecting"}}})
 	}))
@@ -74,7 +78,7 @@ func TestCoordinatorRunsReadinessAndStopsWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	exited := make(chan error, 1)
-	args := []string{"--listen", address, "--storage-root", root, "--storage-id", "store", "--storage-generation", "one", "--volume-uid", "volume", "--registry-path", "/var/lib/registry", "--owner", "fixture-instance", "--credential-file", keyPath, "--coordination-api", core.URL, "--allow-internal-http", "--upstream", registry.URL}
+	args := []string{"--listen", address, "--storage-root", root, "--storage-id", "store", "--storage-generation", "one", "--volume-uid", "volume", "--registry-path", "/var/lib/registry", "--owner", "fixture-instance", "--pod-name", "pod", "--pod-uid", "uid", "--credential-file", keyPath, "--coordination-api", core.URL, "--allow-internal-http", "--upstream", registry.URL}
 	go func() { exited <- run(ctx, args) }()
 	client := &http.Client{Timeout: time.Second}
 	ready := false

@@ -226,3 +226,55 @@ func TestRegistryPreparationDerivesIdentityAndNeverPromotesReady(t *testing.T) {
 		t.Fatal("failed inspection did not block preparation")
 	}
 }
+
+func TestRegistryParticipantEndpointRejectsClaimedRuntimeFacts(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "participants.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.CleanupParticipant{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	binding, err := guard.ProvisionRegistryStorage(database, "observed-volume", "/var/lib/registry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, _ := binding.Fingerprint()
+	calls := 0
+	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, inspectParticipant: func(_ context.Context, pod, uid, owner string, _ guard.StorageRegistration) (guard.ParticipantRegistration, error) {
+		calls++
+		return guard.ParticipantRegistration{StorageID: binding.StorageID, Generation: binding.Generation, Owner: owner, Role: "registry-ingress", PodUID: uid, ContainerID: "observed-container", ImageID: "observed-image", BindingFingerprint: fingerprint}, nil
+	}}
+	t.Setenv("TOKEN", "isolated-fixture")
+	router := chi.NewRouter()
+	router.Use(middleware.FullToken)
+	router.Post("/stores/{storage_id}/participants/registry", h.RegisterRegistryParticipant)
+	send := func(extra bool) int {
+		body := map[string]interface{}{"generation": binding.Generation, "pod": "pod", "pod_uid": "pod-uid", "owner": "instance"}
+		if extra {
+			body["container_id"] = "forged"
+		}
+		raw, _ := json.Marshal(body)
+		request := httptest.NewRequest("POST", "/stores/"+binding.StorageID+"/participants/registry", bytes.NewReader(raw))
+		request.Header.Set("Authorization", "Token isolated-fixture")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response.Code
+	}
+	if status := send(true); status != 400 || calls != 0 {
+		t.Fatal("claimed container reached inspector", status)
+	}
+	if status := send(false); status != 200 {
+		t.Fatal("verified participant not registered", status)
+	}
+	var participant model.CleanupParticipant
+	if err := database.First(&participant).Error; err != nil || participant.ContainerID != "observed-container" {
+		t.Fatal(participant, err)
+	}
+	observed, err := guard.InspectStorage(database, binding.StorageID, binding.Generation)
+	if err != nil || observed.Mode != "collecting" {
+		t.Fatal("registration enabled cleanup", err)
+	}
+}

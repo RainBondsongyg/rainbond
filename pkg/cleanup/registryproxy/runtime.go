@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	coordination "github.com/goodrain/rainbond/pkg/cleanup"
@@ -15,6 +16,7 @@ import (
 type RuntimeBackend interface {
 	CoordinationBackend
 	InspectStorage(context.Context, string, string) (coordination.StorageObservation, error)
+	RegisterRegistryParticipant(context.Context, string, string, string, string, string) error
 }
 
 // RuntimeConfig is populated by the installer from verified deployment facts.
@@ -22,6 +24,7 @@ type RuntimeConfig struct {
 	Root            string
 	Binding         coordination.StorageRegistration
 	Upstream, Owner string
+	Pod, PodUID     string
 	Backend         RuntimeBackend
 	PermitKey       func() []byte
 	Transport       http.RoundTripper
@@ -29,15 +32,17 @@ type RuntimeConfig struct {
 
 // Runtime keeps process liveness independent from dependency readiness.
 type Runtime struct {
-	config      RuntimeConfig
-	proxy       *Proxy
-	fingerprint string
+	config         RuntimeConfig
+	proxy          *Proxy
+	fingerprint    string
+	registrationMu sync.Mutex
+	registered     bool
 }
 
 // NewRuntime never initializes or rebinds a mount as a side effect of startup.
 func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 	fingerprint, err := config.Binding.Fingerprint()
-	if err != nil || config.Backend == nil {
+	if err != nil || config.Backend == nil || config.Pod == "" || config.PodUID == "" {
 		return nil, ErrStorageIdentity
 	}
 	if err := VerifyStorageIdentity(config.Root, config.Binding); err != nil {
@@ -71,8 +76,24 @@ func (r *Runtime) checkBinding(ctx context.Context) error {
 		return ErrStorageIdentity
 	}
 }
+func (r *Runtime) ensureRegistered(ctx context.Context, force bool) error {
+	r.registrationMu.Lock()
+	defer r.registrationMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r.registered && !force {
+		return nil
+	}
+	err := r.config.Backend.RegisterRegistryParticipant(ctx, r.config.Binding.StorageID, r.config.Binding.Generation, r.config.Owner, r.config.Pod, r.config.PodUID)
+	r.registered = err == nil
+	return err
+}
 func (r *Runtime) ready(ctx context.Context) error {
 	if err := r.checkBinding(ctx); err != nil {
+		return err
+	}
+	if err := r.ensureRegistered(ctx, true); err != nil {
 		return err
 	}
 	target := r.proxy.upstream.ResolveReference(&url.URL{Path: "/v2/"})
@@ -115,6 +136,9 @@ func (r *Runtime) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
 		err := r.checkBinding(ctx)
+		if err == nil {
+			err = r.ensureRegistered(ctx, false)
+		}
 		cancel()
 		if err != nil {
 			http.Error(w, "registry storage binding unavailable", 503)

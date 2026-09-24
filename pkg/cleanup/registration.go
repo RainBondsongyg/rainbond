@@ -133,3 +133,23 @@ func ProvisionRegistryStorage(database *gorm.DB, volumeUID, root string) (Storag
 	}
 	return created, nil
 }
+
+// StorageBinding retrieves only a valid immutable registered descriptor.
+func StorageBinding(database *gorm.DB, storage, generation string) (StorageRegistration, error) {
+	var row model.CleanupStorage
+	if !coordinationIdentity.MatchString(storage) || !coordinationIdentity.MatchString(generation) {
+		return StorageRegistration{}, ErrCoordinationChanged
+	}
+	if err := database.Where("storage_id = ?", storage).First(&row).Error; err != nil {
+		return StorageRegistration{}, err
+	}
+	var binding StorageRegistration
+	if json.Unmarshal([]byte(row.RegistrationJSON), &binding) != nil {
+		return StorageRegistration{}, ErrCoordinationChanged
+	}
+	fingerprint, err := binding.Fingerprint()
+	if err != nil || binding.StorageID != storage || binding.Generation != generation || row.Generation != generation || fingerprint != row.RegistrationFingerprint {
+		return StorageRegistration{}, ErrCoordinationChanged
+	}
+	return binding, nil
+}

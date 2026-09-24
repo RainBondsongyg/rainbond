@@ -44,3 +44,22 @@ type CleanupOperation struct {
 
 // TableName returns the persistent operation table.
 func (CleanupOperation) TableName() string { return "cleanup_operations" }
+
+// CleanupParticipant records a control-plane-verified runtime instance.
+type CleanupParticipant struct {
+	ID                 string `gorm:"type:varchar(64);primary_key"`
+	StorageID          string `gorm:"type:varchar(64);not null;index:idx_cleanup_participant_store"`
+	Generation         string `gorm:"type:varchar(64);not null"`
+	Owner              string `gorm:"type:varchar(128);not null"`
+	Role               string `gorm:"type:varchar(32);not null"`
+	PodUID             string `gorm:"type:varchar(64);not null"`
+	ContainerID        string `gorm:"type:varchar(256);not null"`
+	ImageID            string `gorm:"type:varchar(512);not null"`
+	BindingFingerprint string `gorm:"type:varchar(64);not null"`
+	RegistrationHash   string `gorm:"type:varchar(64);not null"`
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// TableName returns the verified participant table.
+func (CleanupParticipant) TableName() string { return "cleanup_participants" }

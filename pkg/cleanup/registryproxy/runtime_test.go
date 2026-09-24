@@ -14,6 +14,9 @@ type runtimeBackend struct {
 	observation coordination.StorageObservation
 }
 
+func (b *runtimeBackend) RegisterRegistryParticipant(context.Context, string, string, string, string, string) error {
+	return nil
+}
 func (b *runtimeBackend) InspectStorage(context.Context, string, string) (coordination.StorageObservation, error) {
 	return b.observation, nil
 }
@@ -30,7 +33,7 @@ func TestRuntimeChecksBothMarkerAndRegisteredFingerprint(t *testing.T) {
 		w.WriteHeader(401)
 	}))
 	defer upstream.Close()
-	runtime, err := NewRuntime(RuntimeConfig{Root: root, Binding: binding, Upstream: upstream.URL, Owner: "instance", Backend: backend, PermitKey: func() []byte { return nil }})
+	runtime, err := NewRuntime(RuntimeConfig{Root: root, Binding: binding, Upstream: upstream.URL, Owner: "instance", Pod: "pod", PodUID: "uid", Backend: backend, PermitKey: func() []byte { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
