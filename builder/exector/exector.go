@@ -578,7 +578,7 @@ func (e *exectorManager) buildFromMarketSlug(task *pb.TaskMessage) {
 		logrus.Error("create build from market slug task error.", err.Error())
 		return
 	}
-	go func() {
+	func() {
 		start := time.Now()
 		defer event.GetManager().ReleaseLogger(i.Logger)
 		defer func() {

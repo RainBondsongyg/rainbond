@@ -72,3 +72,45 @@ func TestSlugShareTaskWaitsForResultPersistence(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+type blockedMarketCompletionLogs struct {
+	vmActivationLogs
+	entered, release chan struct{}
+}
+
+func (s *blockedMarketCompletionLogs) ReleaseLogger(event.Logger) {
+	close(s.entered)
+	<-s.release
+}
+
+// capability_id: rainbond.cleanup.market-slug-task-completion
+func TestMarketSlugTaskWaitsForCompletion(t *testing.T) {
+	// Invalid TCP port rejects before dialing; do not access a user's SSH agent.
+	t.Setenv("SSH_AUTH_SOCK", "")
+	logs := &blockedMarketCompletionLogs{entered: make(chan struct{}), release: make(chan struct{})}
+	event.NewTestManager(logs)
+	defer event.NewTestManager(nil)
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		(&exectorManager{}).buildFromMarketSlug(&pb.TaskMessage{TaskBody: []byte(`{"event_id":"owned-market-boundary","slug_info":{"ftp_host":"127.0.0.1","ftp_port":"65536"}}`)})
+	}()
+	defer func() {
+		close(logs.release)
+		select {
+		case <-returned:
+		case <-time.After(5 * time.Second):
+			t.Error("market task did not complete")
+		}
+	}()
+	select {
+	case <-logs.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("market task did not reach completion")
+	}
+	select {
+	case <-returned:
+		t.Fatal("market task returned while completion was still in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
