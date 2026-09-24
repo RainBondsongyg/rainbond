@@ -23,6 +23,8 @@ func (CleanupStorage) TableName() string { return "cleanup_storage" }
 // CleanupOperation has no lease expiry. Uncertain operations remain protective
 // across process restarts until explicit reconciliation proves a safe outcome.
 type CleanupOperation struct {
+	BeforeMeasurement string  `gorm:"type:text"`
+	AfterMeasurement  string  `gorm:"type:text"`
 	ParentOperationID string  `gorm:"type:varchar(64);not null;default:'';index:idx_cleanup_parent"`
 	ExternalKey       *string `gorm:"type:varchar(64);unique_index:idx_cleanup_external"`
 	ExternalScope     string  `gorm:"type:varchar(255);not null;default:''"`

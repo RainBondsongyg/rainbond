@@ -45,6 +45,15 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	listener.Close()
 	root := t.TempDir()
 	storage := filepath.Join(root, "storage")
+	if err := os.MkdirAll(storage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	measurementBinding := guard.StorageRegistration{StorageID: "isolated", Generation: "one", VolumeUID: "owned-test-volume", RootPath: storage}
+	if err := registryproxy.InitializeStorageIdentity(storage, measurementBinding); err != nil {
+		t.Fatal(err)
+	}
+	bindingFingerprint, _ := measurementBinding.Fingerprint()
+	bindingJSON, _ := json.Marshal(measurementBinding)
 	configPath := filepath.Join(root, "registry.yml")
 	testID := filepath.Base(root)
 	config := fmt.Sprintf("version: 0.1\nlog:\n  level: error\nstorage:\n  filesystem:\n    rootdirectory: %q\n  delete:\n    enabled: true\nhttp:\n  addr: %q\n  headers:\n    X-Cleanup-Test-ID: [%q]\n", storage, address, testID)
@@ -104,7 +113,7 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.Create(&model.CleanupStorage{StorageID: "isolated", Generation: "one", Mode: "ready"}).Error; err != nil {
+	if err := database.Create(&model.CleanupStorage{StorageID: "isolated", Generation: "one", Mode: "ready", RegistrationFingerprint: bindingFingerprint, RegistrationJSON: string(bindingJSON)}).Error; err != nil {
 		t.Fatal(err)
 	}
 	fixtureKey := strings.Repeat("isolated-fixture-", 3)
@@ -234,13 +243,12 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	}
 	request("POST", sidecar.URL+"/v2/test/new/blobs/uploads/", "", nil, "", 409)
 	stop()
-	measurementBinding := guard.StorageRegistration{StorageID: "isolated", Generation: "one", VolumeUID: "owned-test-volume", RootPath: storage}
-	if err := registryproxy.InitializeStorageIdentity(storage, measurementBinding); err != nil {
-		t.Fatal(err)
-	}
 	beforeGC, err := registryproxy.MeasureStorage(storage, measurementBinding)
 	if err != nil {
 		t.Fatal("owned storage could not be measured before GC", err)
+	}
+	if err := guard.RecordMaintenanceMeasurement(database, gc, "before", beforeGC); err != nil {
+		t.Fatal(err)
 	}
 	command := exec.CommandContext(ctx, binary, "garbage-collect", configPath)
 	command.Env = environment
@@ -268,6 +276,12 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	}
 	if err := client.CompleteMaintenanceWork(ctx, gc, "succeeded"); err != nil {
 		t.Fatal(err)
+	}
+	if err := guard.RecordMaintenanceMeasurement(database, gc, "after", afterGC); err != nil {
+		t.Fatal(err)
+	}
+	if before, after, err := guard.MaintenanceMeasurements(database, gc); err != nil || before == nil || after == nil {
+		t.Fatal("GC observations were not persisted", err)
 	}
 	if err := client.BeginRestore(ctx, gc); err != nil {
 		t.Fatal(err)

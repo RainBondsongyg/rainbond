@@ -802,6 +802,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.durable-maintenance-measurements",
+      "title": "Persist GC measurements without releasing maintenance protection",
+      "title_zh": "Persist GC measurements without releasing maintenance protection",
+      "interface_type": "workflow",
+      "interface": "cleanup.RecordMaintenanceMeasurement",
+      "code_paths": [
+        "pkg/cleanup/maintenance_measurement.go",
+        "pkg/cleanup/storage_measurement.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/maintenance_measurement_test.go",
+          "selector": "TestMaintenanceMeasurementsPersistWithoutGrantingRestore"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.generic-activation-fence",
       "title": "Reject generic activation of retired version records",
       "title_zh": "Reject generic activation of retired version records",

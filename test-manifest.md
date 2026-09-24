@@ -48,6 +48,7 @@
 | rainbond.cleanup.coordination-route-auth | Require Region authentication for every coordination route | active | regression | /v2/cleanup/stores/{storage_id}/operations | api/api_routers/version2/cleanup_coordination_test.go::TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication |
 | rainbond.cleanup.coordinator-runtime | Run verified readiness and terminate the coordinator cleanly | active | regression | cmd/registry-coordinator.run | cmd/registry-coordinator/main_test.go::TestCoordinatorRunsReadinessAndStopsWithContext |
 | rainbond.cleanup.durable-coordination | Persist coordinated operations across restarts and conflicts | active | regression | pkg/cleanup.AcquireOperation | pkg/cleanup/coordination_test.go::TestPersistentCoordinationConflictsAndRecovery |
+| rainbond.cleanup.durable-maintenance-measurements | Persist GC measurements without releasing maintenance protection | active | regression | cleanup.RecordMaintenanceMeasurement | pkg/cleanup/maintenance_measurement_test.go::TestMaintenanceMeasurementsPersistWithoutGrantingRestore |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
 | rainbond.cleanup.participant-replacement | Participant replacement preserves active deletion protection | active | regression | cleanup.RegisterParticipant | pkg/cleanup/participant_test.go::TestParticipantReplacementWithdrawsReadinessWithoutLosingDeletion |
@@ -966,6 +967,16 @@
 - 业务入口: `pkg/cleanup.AcquireOperation`
 - 代码路径: `pkg/cleanup/coordination.go`
 - 测试路径: `pkg/cleanup/coordination_test.go::TestPersistentCoordinationConflictsAndRecovery`
+
+### Persist GC measurements without releasing maintenance protection
+
+- Capability ID: `rainbond.cleanup.durable-maintenance-measurements`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `cleanup.RecordMaintenanceMeasurement`
+- 代码路径: `pkg/cleanup/maintenance_measurement.go`, `pkg/cleanup/storage_measurement.go`
+- 测试路径: `pkg/cleanup/maintenance_measurement_test.go::TestMaintenanceMeasurementsPersistWithoutGrantingRestore`
 
 ### Reject generic activation of retired version records
 
