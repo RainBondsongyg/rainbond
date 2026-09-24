@@ -337,6 +337,18 @@ func (e *exectorManager) buildFromImage(task *pb.TaskMessage) {
 	defer func() {
 		logrus.Debugf("complete build from source code, consuming time %s", time.Since(start).String())
 	}()
+	admission, admissionErr := admitBuild(db.GetManager().DB(), "image", task.TaskId, task.TaskBody)
+	if admissionErr != nil {
+		i.Logger.Error("Image build blocked by cleanup coordination", map[string]string{"step": "callback", "status": "failure"})
+		return
+	}
+	i.cleanupAdmission = admission
+	confirmed := false
+	defer func() {
+		if err := admission.finish(confirmed); err != nil {
+			logrus.Error("Image build coordination outcome was not persisted")
+		}
+	}()
 	for n := 0; n < 2; n++ {
 		err := i.Run(time.Minute * 30)
 		if err != nil {
@@ -355,7 +367,7 @@ func (e *exectorManager) buildFromImage(task *pb.TaskMessage) {
 			for k, v := range i.Configs {
 				configs[k] = v.String()
 			}
-			if err := e.UpdateDeployVersion(i.ServiceID, i.DeployVersion); err != nil {
+			if err := i.cleanupAdmission.activateVersion(i.ServiceID, i.DeployVersion); err != nil {
 				logrus.Errorf("Update app service deploy version failure %s, service %s do not auto upgrade", err.Error(), i.ServiceID)
 				break
 			}
@@ -363,6 +375,7 @@ func (e *exectorManager) buildFromImage(task *pb.TaskMessage) {
 			if err != nil {
 				i.Logger.Error("Send upgrade action failed", map[string]string{"step": "callback", "status": "failure"})
 			}
+			confirmed = err == nil
 			break
 		}
 	}
@@ -489,6 +502,18 @@ func (e *exectorManager) buildFromSourceCode(task *pb.TaskMessage) {
 	defer func() {
 		logrus.Debugf("Complete build from source code, consuming time %s", time.Now().Sub(start).String())
 	}()
+	admission, admissionErr := admitBuild(db.GetManager().DB(), "source", task.TaskId, task.TaskBody)
+	if admissionErr != nil {
+		i.Logger.Error("Source build blocked by cleanup coordination", map[string]string{"step": "callback", "status": "failure"})
+		return
+	}
+	i.cleanupAdmission = admission
+	confirmed := false
+	defer func() {
+		if err := admission.finish(confirmed); err != nil {
+			logrus.Error("Source build coordination outcome was not persisted")
+		}
+	}()
 	err := i.Run(time.Minute * 30)
 	if err != nil {
 		logrus.Errorf("build from source code error: %s", err.Error())
@@ -511,7 +536,7 @@ func (e *exectorManager) buildFromSourceCode(task *pb.TaskMessage) {
 		for k, v := range i.Configs {
 			configs[k] = v.String()
 		}
-		if err := e.UpdateDeployVersion(i.ServiceID, i.DeployVersion); err != nil {
+		if err := i.cleanupAdmission.activateVersion(i.ServiceID, i.DeployVersion); err != nil {
 			logrus.Errorf("Update app service deploy version failure %s, service %s do not auto upgrade", err.Error(), i.ServiceID)
 			return
 		}
@@ -519,6 +544,7 @@ func (e *exectorManager) buildFromSourceCode(task *pb.TaskMessage) {
 		if err != nil {
 			i.Logger.Error("Send upgrade action failed", map[string]string{"step": "callback", "status": "failure"})
 		}
+		confirmed = err == nil
 	}
 }
 
@@ -542,7 +568,20 @@ func (e *exectorManager) buildFromVM(task *pb.TaskMessage) {
 	defer func() {
 		logrus.Debugf("complete build from source code, consuming time %s", time.Since(start).String())
 	}()
+	confirmed := false
 	if v.VMImageSource != "" {
+		admission, admissionErr := admitBuild(db.GetManager().DB(), "vm", task.TaskId, task.TaskBody)
+		if admissionErr != nil {
+			v.Logger.Error("VM build blocked by cleanup coordination", map[string]string{"step": "callback", "status": "failure"})
+			return
+		}
+		v.cleanupAdmission = admission
+		defer func() {
+			if err := admission.finish(confirmed); err != nil {
+				logrus.Error("VM build coordination outcome was not persisted")
+			}
+		}()
+
 		err := v.RunVMBuild()
 		if err != nil {
 			logrus.Errorf("build from vm error: %v", err)
@@ -557,7 +596,7 @@ func (e *exectorManager) buildFromVM(task *pb.TaskMessage) {
 	for k, u := range v.Configs {
 		configs[k] = u.String()
 	}
-	if err := e.UpdateDeployVersion(v.ServiceID, v.DeployVersion); err != nil {
+	if err := v.cleanupAdmission.activateVersion(v.ServiceID, v.DeployVersion); err != nil {
 		logrus.Errorf("Update app service deploy version failure %s, service %s do not auto upgrade", err.Error(), v.ServiceID)
 		v.Logger.Error("VM version activation rejected; deployment was not dispatched", map[string]string{"step": "callback", "status": "failure"})
 		return
@@ -566,6 +605,7 @@ func (e *exectorManager) buildFromVM(task *pb.TaskMessage) {
 	if err != nil {
 		v.Logger.Error("Send upgrade action failed", map[string]string{"step": "callback", "status": "failure"})
 	}
+	confirmed = err == nil
 }
 
 // buildFromMarketSlug build app from market slug

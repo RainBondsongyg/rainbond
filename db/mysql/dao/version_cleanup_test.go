@@ -138,3 +138,51 @@ func TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation(t *testing.
 		})
 	}
 }
+
+func TestAdmittedBuildVersionPersistsDuringGCDrain(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "admitted.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&model.CleanupStorage{StorageID: "owned", Generation: "one", Mode: "ready"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	record := &model.VersionInfo{ServiceID: "service", BuildVersion: "new", EventID: "event", ImageName: "goodrain.me/team/component:v1"}
+	if err := (&VersionInfoDaoImpl{DB: database}).AddModel(record); err != nil {
+		t.Fatal(err)
+	}
+	producer := cleanupguard.CoordinationRequest{StorageID: "owned", Generation: "one", OperationID: "build", Owner: "builder", Kind: "producer", Scope: "team/component", Fingerprint: "original-build"}
+	if _, err := cleanupguard.AcquireOperation(database, producer); err != nil {
+		t.Fatal(err)
+	}
+	gc := cleanupguard.CoordinationRequest{StorageID: "owned", Generation: "one", OperationID: "gc", Owner: "cleanup", Kind: "gc", Scope: "*", Fingerprint: "confirmed-gc"}
+	if _, err := cleanupguard.RequestMaintenance(database, gc); err != nil {
+		t.Fatal(err)
+	}
+	record.FinalStatus = "success"
+	var escaped *gorm.DB
+	if err := cleanupguard.WithProducerReferenceMutation(database, []cleanupguard.CoordinationRequest{producer}, []string{"team/component"}, func(tx *gorm.DB) error {
+		escaped = tx
+		return (&VersionInfoDaoImpl{DB: tx}).UpdateModel(record)
+	}); err != nil {
+		t.Fatal("real version DAO rejected admitted completion", err)
+	}
+	var saved model.VersionInfo
+	if err := database.First(&saved, record.ID).Error; err != nil || saved.FinalStatus != "success" {
+		t.Fatal("version result not committed", err)
+	}
+	if err := (&VersionInfoDaoImpl{DB: database}).UpdateModel(record); !errors.Is(err, cleanupguard.ErrCoordinationBusy) {
+		t.Fatal("admission leaked onto shared connection", err)
+	}
+	if err := (&VersionInfoDaoImpl{DB: escaped}).UpdateModel(record); err == nil {
+		t.Fatal("completed transaction could be reused")
+	}
+	if err := cleanupguard.EnterMaintenance(database, gc); !errors.Is(err, cleanupguard.ErrCoordinationBusy) {
+		t.Fatal("version persistence prematurely released producer", err)
+	}
+}

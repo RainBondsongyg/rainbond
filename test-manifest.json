@@ -894,6 +894,26 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.native-image-build-admission",
+      "title": "Image builds hold durable cleanup admission through completion",
+      "title_zh": "Image builds hold durable cleanup admission through completion",
+      "interface_type": "workflow",
+      "interface": "exectorManager.buildFromImage",
+      "code_paths": [
+        "builder/exector/cleanup_image_admission.go",
+        "builder/exector/exector.go",
+        "pkg/cleanup/reference_mutation.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_image_admission_test.go",
+          "selector": "TestImageBuildAdmissionBlocksGCAndNeverReplays"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.participant-replacement",
       "title": "Participant replacement preserves active deletion protection",
       "title_zh": "Participant replacement preserves active deletion protection",

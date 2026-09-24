@@ -82,3 +82,46 @@ func TestReferenceMutationUsesCallerTransactionWithoutCommittingIt(t *testing.T)
 		t.Fatal("restoration rollback lost", count, err)
 	}
 }
+
+func TestAdmittedProducerCanCommitDuringDrainWithoutOpeningAdmission(t *testing.T) {
+	database, _ := coordinationDB(t)
+	producer := operation("building", "producer", "app/a")
+	if _, err := AcquireOperation(database, producer); err != nil {
+		t.Fatal(err)
+	}
+	gc := operation("gc", "gc", "*")
+	if _, err := RequestMaintenance(database, gc); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	write := func(tx *gorm.DB) error {
+		return WithReferenceMutation(tx, []string{"app/a"}, func(*gorm.DB) error { called = true; return nil })
+	}
+	if err := WithProducerReferenceMutation(database, []CoordinationRequest{producer}, []string{"app/a"}, write); err != nil || !called {
+		t.Fatal("admitted producer cannot finish metadata", err)
+	}
+	called = false
+	if err := WithReferenceMutation(database, []string{"app/a"}, write); !errors.Is(err, ErrCoordinationBusy) || called {
+		t.Fatal("new producer bypassed drain", err)
+	}
+	if err := EnterMaintenance(database, gc); !errors.Is(err, ErrCoordinationBusy) {
+		t.Fatal("metadata commit released producer prematurely", err)
+	}
+	if err := WithProducerReferenceMutation(database, []CoordinationRequest{producer}, []string{"app/b"}, write); err == nil || called {
+		t.Fatal("producer expanded its scope")
+	}
+	forged := producer
+	forged.Owner = "other"
+	if err := WithProducerReferenceMutation(database, []CoordinationRequest{forged}, []string{"app/a"}, write); err == nil || called {
+		t.Fatal("foreign owner used admission")
+	}
+	if err := FinishOperation(database, producer, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := WithProducerReferenceMutation(database, []CoordinationRequest{producer}, []string{"app/a"}, write); err == nil || called {
+		t.Fatal("finished producer reused admission")
+	}
+	if err := EnterMaintenance(database, gc); err != nil {
+		t.Fatal(err)
+	}
+}
