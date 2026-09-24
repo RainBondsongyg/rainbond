@@ -710,6 +710,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.activation-registry-coordination",
+      "title": "Rollback and activation cannot reference deleting images",
+      "title_zh": "Rollback and activation cannot reference deleting images",
+      "interface_type": "workflow",
+      "interface": "cleanup.TrackServiceActivation",
+      "code_paths": [
+        "pkg/cleanup/activation.go",
+        "pkg/cleanup/store.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/activation_coordination_test.go",
+          "selector": "TestActivationAndRollbackRejectDeletingImage"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.coordinated-registry-delete-gc",
       "title": "Verify coordinated deletion and separate GC against isolated real Registry",
       "title_zh": "Verify coordinated deletion and separate GC against isolated real Registry",

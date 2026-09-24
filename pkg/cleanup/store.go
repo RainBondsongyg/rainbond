@@ -80,32 +80,33 @@ func SelectRollbackVersion(begin func() *gorm.DB, tenantID, serviceID, version, 
 	}
 	defer tx.Rollback()
 	var service serviceRow
-	if err := tx.Table("tenant_services").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND tenant_id = ?", serviceID, tenantID).First(&service).Error; err != nil {
-		return "", err
-	}
-	if len(expectedCurrent) > 0 && service.DeployVersion != expectedCurrent[0] {
-		return "", ErrStateChanged
-	}
-	if version == "" && len(expectedCurrent) > 0 {
-		if err := tx.Table("tenant_services").Where("service_id = ? AND tenant_id = ?", serviceID, tenantID).Update("deploy_version", version).Error; err != nil {
-			return "", err
-		}
-		if err := tx.Commit().Error; err != nil {
-			return "", err
-		}
-		return service.DeployVersion, nil
-	}
 	var record versionRow
-	if err := tx.Table("tenant_service_version").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND build_version = ?", serviceID, version).First(&record).Error; err != nil {
-		return "", err
+	prepare := func(tx *gorm.DB) ([]string, error) {
+		if err := tx.Table("tenant_services").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND tenant_id = ?", serviceID, tenantID).First(&service).Error; err != nil {
+			return nil, err
+		}
+		if len(expectedCurrent) > 0 && service.DeployVersion != expectedCurrent[0] {
+			return nil, ErrStateChanged
+		}
+		if version == "" && len(expectedCurrent) > 0 {
+			return nil, nil
+		}
+		if err := tx.Table("tenant_service_version").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND build_version = ?", serviceID, version).First(&record).Error; err != nil {
+			return nil, err
+		}
+		if record.FinalStatus != "success" {
+			return nil, ErrVersionProtected
+		}
+		return versionRowReferenceScopes(record), nil
 	}
-	if record.FinalStatus != "success" {
-		return "", ErrVersionProtected
-	}
-	if err := tx.Table("tenant_service_version").Where("service_id = ? AND build_version = ?", serviceID, version).Update("activation_revision", operationID).Error; err != nil {
-		return "", err
-	}
-	if err := tx.Table("tenant_services").Where("service_id = ? AND tenant_id = ?", serviceID, tenantID).Update("deploy_version", version).Error; err != nil {
+	if err := withResolvedReferenceMutation(tx, prepare, func(tx *gorm.DB) error {
+		if version != "" {
+			if err := tx.Table("tenant_service_version").Where("service_id = ? AND build_version = ?", serviceID, version).Update("activation_revision", operationID).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Table("tenant_services").Where("service_id = ? AND tenant_id = ?", serviceID, tenantID).Update("deploy_version", version).Error
+	}); err != nil {
 		return "", err
 	}
 	if err := tx.Commit().Error; err != nil {

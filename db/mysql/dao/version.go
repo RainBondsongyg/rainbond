@@ -19,10 +19,8 @@
 package dao
 
 import (
-	"strings"
 	"time"
 
-	"github.com/docker/distribution/reference"
 	"github.com/goodrain/rainbond/db/errors"
 	"github.com/goodrain/rainbond/db/model"
 	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
@@ -120,21 +118,11 @@ func (c *VersionInfoDaoImpl) UpdateModel(mo model.Interface) error {
 }
 
 func versionReferenceScopes(result *model.VersionInfo) []string {
-	var scopes []string
 	image := result.ImageName
 	if image == "" && result.DeliveredType == "image" {
 		image = result.DeliveredPath
 	}
-	// An unqualified image can be resolved differently by the runtime and the
-	// platform. Do not infer a Docker Hub library scope for a local dependency.
-	first, _, qualified := strings.Cut(image, "/")
-	if !qualified || (!strings.ContainsAny(first, ".:") && first != "localhost") {
-		return nil
-	}
-	if named, err := reference.ParseNormalizedNamed(image); err == nil {
-		scopes = []string{reference.Path(named)}
-	}
-	return scopes
+	return cleanupguard.ReferenceScopesForImage(image)
 }
 
 // VersionInfoDaoImpl VersionInfoDaoImpl

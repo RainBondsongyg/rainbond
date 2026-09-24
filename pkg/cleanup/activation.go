@@ -2,8 +2,8 @@ package cleanup
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
+
 	"github.com/jinzhu/gorm"
 )
 
@@ -25,35 +25,26 @@ func TrackServiceActivation(database *gorm.DB, serviceID, version string, save f
 	if err != nil {
 		return err
 	}
-	apply := func(tx *gorm.DB) error {
-		// Generic DAO saves and builder completion must serialize with retirement,
-		// not only explicit rollback/upgrade handlers. An absent target must not
-		// become current again through an older in-memory service object.
+	prepare := func(tx *gorm.DB) ([]string, error) {
 		var current serviceRow
 		if err := tx.Table("tenant_services").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ?", serviceID).First(&current).Error; err != nil {
-			return err
+			return nil, err
 		}
-		if current.DeployVersion != version {
-			var target versionRow
-			if err := tx.Table("tenant_service_version").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND build_version = ?", serviceID, version).First(&target).Error; err != nil {
-				return err
+		var target versionRow
+		if err := tx.Table("tenant_service_version").Set("gorm:query_option", "FOR UPDATE").Where("service_id = ? AND build_version = ?", serviceID, version).First(&target).Error; err != nil {
+			if gorm.IsRecordNotFoundError(err) && current.DeployVersion == version {
+				// A configuration-only save may retain a legacy current version.
+				// Its unresolved dependency still conflicts with any deletion.
+				return nil, nil
 			}
+			return nil, err
 		}
+		return versionRowReferenceScopes(target), nil
+	}
+	return withResolvedReferenceMutation(database, prepare, func(tx *gorm.DB) error {
 		if err := save(tx); err != nil {
 			return err
 		}
 		return tx.Table("tenant_service_version").Where("service_id = ? AND build_version = ?", serviceID, version).Update("activation_revision", revision).Error
-	}
-	if _, ok := database.CommonDB().(*sql.Tx); ok {
-		return apply(database)
-	}
-	tx := database.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback()
-	if err := apply(tx); err != nil {
-		return err
-	}
-	return tx.Commit().Error
+	})
 }

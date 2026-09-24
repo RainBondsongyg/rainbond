@@ -43,6 +43,7 @@
 | rainbond.builder.mirror-docker-ref-rewrite | docker daemon pulls rewrite docker.io refs to mirrors with fallback order | active | unit | builder/sources.mirrorPullRefs | builder/sources/mirror_hosts_test.go::TestMirrorPullRefs |
 | rainbond.builder.mirror-merge-manual-priority | Manual REGISTRY_MIRRORS take priority over dynamic mirrors with host dedup | active | unit | builder/sources.mergeMirrors | builder/sources/mirror_merge_test.go::TestMergeMirrors |
 | rainbond.builder.registered-worker-dispatch | 已注册 worker 分发时不再误报未知任务 | active | regression | builder/exector.exectorManager.RunTask | builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker |
+| rainbond.cleanup.activation-registry-coordination | Rollback and activation cannot reference deleting images | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/activation_coordination_test.go::TestActivationAndRollbackRejectDeletingImage |
 | rainbond.cleanup.coordinated-registry-delete-gc | Verify coordinated deletion and separate GC against isolated real Registry | active | integration | Region coordination API and Registry sidecar | api/controller/cleanup_registryproxy_test.go::TestCoordinatedRegistryRealDeletionAndGC |
 | rainbond.cleanup.coordination-route-auth | Require Region authentication for every coordination route | active | regression | /v2/cleanup/stores/{storage_id}/operations | api/api_routers/version2/cleanup_coordination_test.go::TestCleanupCoordinationRoutesAlwaysRequireRegionAuthentication |
 | rainbond.cleanup.coordinator-runtime | Run verified readiness and terminate the coordinator cleanly | active | regression | cmd/registry-coordinator.run | cmd/registry-coordinator/main_test.go::TestCoordinatorRunsReadinessAndStopsWithContext |
@@ -913,6 +914,16 @@
 - 业务入口: `builder/exector.exectorManager.RunTask`
 - 代码路径: `builder/exector/exector.go`
 - 测试路径: `builder/exector/exector_test.go::TestRunTaskDoesNotWarnForRegisteredWorker`
+
+### Rollback and activation cannot reference deleting images
+
+- Capability ID: `rainbond.cleanup.activation-registry-coordination`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `cleanup.TrackServiceActivation`
+- 代码路径: `pkg/cleanup/activation.go`, `pkg/cleanup/store.go`
+- 测试路径: `pkg/cleanup/activation_coordination_test.go::TestActivationAndRollbackRejectDeletingImage`
 
 ### Verify coordinated deletion and separate GC against isolated real Registry
 

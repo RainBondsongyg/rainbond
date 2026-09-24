@@ -13,17 +13,12 @@ import (
 // Empty scopes conservatively mean an unresolved repository dependency.
 // Existing transactions remain owned by the caller, which must roll back errors.
 func WithReferenceMutation(database *gorm.DB, scopes []string, write func(*gorm.DB) error) error {
-	if write == nil {
+	return withResolvedReferenceMutation(database, func(*gorm.DB) ([]string, error) { return scopes, nil }, write)
+}
+
+func withResolvedReferenceMutation(database *gorm.DB, prepare func(*gorm.DB) ([]string, error), write func(*gorm.DB) error) error {
+	if prepare == nil || write == nil {
 		return ErrCoordinationChanged
-	}
-	if len(scopes) == 0 {
-		scopes = []string{"*"}
-	}
-	for _, scope := range scopes {
-		request := CoordinationRequest{StorageID: "validation", Generation: "validation", Owner: "reference", OperationID: "validation", Kind: "producer", Scope: scope, Fingerprint: "validation"}
-		if !request.valid() {
-			return ErrCoordinationChanged
-		}
 	}
 	_, callerTransaction := database.CommonDB().(*sql.Tx)
 	tx := database
@@ -49,6 +44,19 @@ func WithReferenceMutation(database *gorm.DB, scopes []string, write func(*gorm.
 	}
 	if err := current.Order("storage_id").Find(&stores).Error; err != nil {
 		return err
+	}
+	scopes, err := prepare(tx)
+	if err != nil {
+		return err
+	}
+	if len(scopes) == 0 {
+		scopes = []string{"*"}
+	}
+	for _, scope := range scopes {
+		request := CoordinationRequest{StorageID: "validation", Generation: "validation", Owner: "reference", OperationID: "validation", Kind: "producer", Scope: scope, Fingerprint: "validation"}
+		if !request.valid() {
+			return ErrCoordinationChanged
+		}
 	}
 	for _, store := range stores {
 		if store.Mode != "ready" && store.Mode != "collecting" {

@@ -2,10 +2,11 @@ package cleanup
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
-	"testing"
 )
 
 func mockRetirementDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
@@ -54,6 +55,8 @@ func TestRetirementTransactionChecksCurrentVersionBeforeDelete(t *testing.T) {
 func TestRollbackCannotSelectMissingRetiredVersion(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service", "tenant").WillReturnRows(sqlmock.NewRows([]string{"service_id", "tenant_id", "deploy_version"}).AddRow("service", "tenant", "current"))
 	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "old").WillReturnRows(sqlmock.NewRows([]string{"ID"}))
 	mock.ExpectRollback()
@@ -84,6 +87,8 @@ func TestRetirementRejectsActiveOperationUnderLock(t *testing.T) {
 func TestRollbackChangesActivationCheckpointAndSelectionTogether(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service", "tenant").WillReturnRows(sqlmock.NewRows([]string{"service_id", "tenant_id", "deploy_version"}).AddRow("service", "tenant", "current"))
 	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "old").WillReturnRows(sqlmock.NewRows([]string{"ID", "final_status"}).AddRow(7, "success"))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs("rollback-event", "service", "old").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -101,6 +106,8 @@ func TestRollbackChangesActivationCheckpointAndSelectionTogether(t *testing.T) {
 func TestFailedRollbackDoesNotOverwriteNewerOperation(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service", "tenant").WillReturnRows(sqlmock.NewRows([]string{"service_id", "tenant_id", "deploy_version"}).AddRow("service", "tenant", "newer"))
 	mock.ExpectRollback()
 	_, err := SelectRollbackVersion(database.Begin, "tenant", "service", "previous", "rollback-undo", "target")
@@ -115,7 +122,10 @@ func TestFailedRollbackDoesNotOverwriteNewerOperation(t *testing.T) {
 func TestActivationCheckpointFailureRollsBackServiceChange(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "version"))
+	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "version").WillReturnRows(sqlmock.NewRows([]string{"ID"}).AddRow(7))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "version").WillReturnError(errors.New("write failure"))
 	mock.ExpectRollback()
@@ -131,8 +141,11 @@ func TestActivationCheckpointFailureRollsBackServiceChange(t *testing.T) {
 func TestActivationDoesNotCommitCallerTransaction(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	tx := database.Begin()
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "version"))
+	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "version").WillReturnRows(sqlmock.NewRows([]string{"ID"}).AddRow(7))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "version").WillReturnResult(sqlmock.NewResult(0, 1))
 	if err := TrackServiceActivation(tx, "service", "version", func(tx *gorm.DB) error { return tx.Exec("UPDATE tenant_services SET deploy_version='version'").Error }); err != nil {
@@ -149,6 +162,8 @@ func TestActivationDoesNotCommitCallerTransaction(t *testing.T) {
 func TestActivationCannotRestoreRetiredTargetThroughGenericSave(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "current"))
 	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "retired").WillReturnRows(sqlmock.NewRows([]string{"ID"}))
 	mock.ExpectRollback()
@@ -165,6 +180,8 @@ func TestActivationCannotRestoreRetiredTargetThroughGenericSave(t *testing.T) {
 func TestActivationPermitsNewBuildWithExistingPendingRecord(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "current"))
 	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "new").WillReturnRows(sqlmock.NewRows([]string{"ID", "final_status"}).AddRow(8, ""))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -182,7 +199,10 @@ func TestActivationPermitsNewBuildWithExistingPendingRecord(t *testing.T) {
 func TestConfigurationSaveKeepsLegacyCurrentTargetWithoutReactivation(t *testing.T) {
 	database, mock := mockRetirementDB(t)
 	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 	mock.ExpectQuery("SELECT .*tenant_services.*FOR UPDATE").WithArgs("service").WillReturnRows(sqlmock.NewRows([]string{"service_id", "deploy_version"}).AddRow("service", "legacy"))
+	mock.ExpectQuery("SELECT .*tenant_service_version.*FOR UPDATE").WithArgs("service", "legacy").WillReturnRows(sqlmock.NewRows([]string{"ID"}))
 	mock.ExpectExec("UPDATE tenant_services").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE .*tenant_service_version.*activation_revision").WithArgs(sqlmock.AnyArg(), "service", "legacy").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
