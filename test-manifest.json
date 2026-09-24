@@ -1091,6 +1091,28 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.verified-storage-measurement",
+      "title": "Measure only the verified registry backing filesystem",
+      "title_zh": "Measure only the verified registry backing filesystem",
+      "interface_type": "workflow",
+      "interface": "registryproxy.MeasureStorage",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/measurement.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registryproxy/measurement_test.go",
+          "selector": "TestMeasurementRequiresBoundStorageAndRejectsSymlinks"
+        },
+        {
+          "path": "cmd/registry-coordinator/main_test.go",
+          "selector": "TestMeasurementModeDoesNotInitializeOrNeedCredentials"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.version-activation-fence",
       "title": "Fence upgrade and rollback against version retirement",
       "title_zh": "Fence upgrade and rollback against version retirement",

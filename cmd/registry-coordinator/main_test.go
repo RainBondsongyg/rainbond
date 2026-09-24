@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net"
@@ -15,6 +16,33 @@ import (
 	coordination "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/goodrain/rainbond/pkg/cleanup/registryproxy"
 )
+
+// capability_id: rainbond.cleanup.verified-storage-measurement
+func TestMeasurementModeDoesNotInitializeOrNeedCredentials(t *testing.T) {
+	root := t.TempDir()
+	args := []string{"--measure-storage", "--storage-root", root, "--storage-id", "store", "--storage-generation", "one", "--volume-uid", "volume", "--registry-path", "/var/lib/registry"}
+	var output bytes.Buffer
+	if err := runWithOutput(context.Background(), args, &output); err == nil {
+		t.Fatal("measurement initialized missing identity")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".rainbond-cleanup")); !os.IsNotExist(err) {
+		t.Fatal("read-only measurement created metadata", err)
+	}
+	binding := coordination.StorageRegistration{StorageID: "store", Generation: "one", VolumeUID: "volume", RootPath: "/var/lib/registry"}
+	if err := registryproxy.InitializeStorageIdentity(root, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithOutput(context.Background(), args, &output); err != nil {
+		t.Fatal(err)
+	}
+	var measured registryproxy.StorageMeasurement
+	if json.Unmarshal(output.Bytes(), &measured) != nil || measured.StorageID != "store" || measured.TotalBytes == 0 {
+		t.Fatal("missing measurement response")
+	}
+	if err := runWithOutput(context.Background(), append(args, "--initialize-storage-identity"), &output); err == nil {
+		t.Fatal("mixed measurement and initialization accepted")
+	}
+}
 
 func TestInstallerModeInitializesOnlyIdentityWithoutCredentials(t *testing.T) {
 	root := t.TempDir()

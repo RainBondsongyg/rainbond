@@ -64,6 +64,7 @@
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
 | rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
+| rainbond.cleanup.verified-storage-measurement | Measure only the verified registry backing filesystem | active | regression | registryproxy.MeasureStorage | pkg/cleanup/registryproxy/measurement_test.go::TestMeasurementRequiresBoundStorageAndRejectsSymlinks<br>cmd/registry-coordinator/main_test.go::TestMeasurementModeDoesNotInitializeOrNeedCredentials |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
 | rainbond.cleanup.version-reference-coordination | Version writes serialize with manifest deletion | active | regression | VersionInfoDaoImpl | db/mysql/dao/version_cleanup_test.go::TestVersionCreationCannotRaceManifestDeletion |
 | rainbond.cleanup.version-update-no-resurrection | Version callbacks preserve activation and never recreate retired records | active | regression | VersionInfoDaoImpl.UpdateModel | db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation |
@@ -1125,6 +1126,16 @@
 - 业务入口: `pkg/cleanup/registryproxy.InitializeStorageIdentity`
 - 代码路径: `pkg/cleanup/registryproxy/identity.go`
 - 测试路径: `pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten`
+
+### Measure only the verified registry backing filesystem
+
+- Capability ID: `rainbond.cleanup.verified-storage-measurement`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `registryproxy.MeasureStorage`
+- 代码路径: `pkg/cleanup/registryproxy/measurement.go`
+- 测试路径: `pkg/cleanup/registryproxy/measurement_test.go::TestMeasurementRequiresBoundStorageAndRejectsSymlinks`, `cmd/registry-coordinator/main_test.go::TestMeasurementModeDoesNotInitializeOrNeedCredentials`
 
 ### Fence upgrade and rollback against version retirement
 

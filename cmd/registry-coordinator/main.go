@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"io"
@@ -74,11 +75,15 @@ func readCredential(path string) (string, error) {
 	return value, nil
 }
 func run(ctx context.Context, args []string) error {
+	return runWithOutput(ctx, args, os.Stdout)
+}
+
+func runWithOutput(ctx context.Context, args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("registry-coordinator", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var binding coordination.StorageRegistration
 	var listen, root, upstream, api, credential, owner, serverCert, serverKey, pod, podUID string
-	var initialize, allowHTTP bool
+	var initialize, measure, allowHTTP bool
 	var controlTLS, upstreamTLS tlsFiles
 	flags.StringVar(&listen, "listen", ":5001", "proxy listen address")
 	flags.StringVar(&root, "storage-root", "", "mounted Registry data root")
@@ -95,6 +100,7 @@ func run(ctx context.Context, args []string) error {
 	flags.StringVar(&serverCert, "tls-cert-file", "", "public listener TLS certificate")
 	flags.StringVar(&serverKey, "tls-key-file", "", "public listener TLS key")
 	flags.BoolVar(&initialize, "initialize-storage-identity", false, "installer-only atomic identity initialization")
+	flags.BoolVar(&measure, "measure-storage", false, "print verified backing filesystem capacity without starting the proxy")
 	flags.BoolVar(&allowHTTP, "allow-internal-http", false, "allow a trusted private HTTP Region API")
 	controlTLS.flags(flags, "coordination")
 	upstreamTLS.flags(flags, "upstream")
@@ -103,6 +109,22 @@ func run(ctx context.Context, args []string) error {
 	}
 	if _, err := binding.Fingerprint(); err != nil {
 		return errConfiguration
+	}
+	if initialize && measure {
+		return errConfiguration
+	}
+	if measure {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		observed, err := registryproxy.MeasureStorage(root, binding)
+		if err != nil {
+			return err
+		}
+		if output == nil {
+			return errConfiguration
+		}
+		return json.NewEncoder(output).Encode(observed)
 	}
 	if initialize {
 		return registryproxy.InitializeStorageIdentity(root, binding)

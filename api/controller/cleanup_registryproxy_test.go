@@ -234,6 +234,14 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	}
 	request("POST", sidecar.URL+"/v2/test/new/blobs/uploads/", "", nil, "", 409)
 	stop()
+	measurementBinding := guard.StorageRegistration{StorageID: "isolated", Generation: "one", VolumeUID: "owned-test-volume", RootPath: storage}
+	if err := registryproxy.InitializeStorageIdentity(storage, measurementBinding); err != nil {
+		t.Fatal(err)
+	}
+	beforeGC, err := registryproxy.MeasureStorage(storage, measurementBinding)
+	if err != nil {
+		t.Fatal("owned storage could not be measured before GC", err)
+	}
 	command := exec.CommandContext(ctx, binary, "garbage-collect", configPath)
 	command.Env = environment
 	command.Stdout = io.Discard
@@ -241,6 +249,13 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	if err := command.Run(); err != nil {
 		t.Fatal("owned offline GC failed")
 	}
+	afterGC, err := registryproxy.MeasureStorage(storage, measurementBinding)
+	if err != nil || beforeGC.FilesystemID != afterGC.FilesystemID || beforeGC.BindingFingerprint != afterGC.BindingFingerprint {
+		t.Fatal("GC observations are not from the same verified filesystem", err)
+	}
+	// Other processes also use the host filesystem. Its free-space delta is an
+	// observation, not proof that all changed bytes were reclaimed by this GC.
+	t.Logf("verified backing filesystem: available bytes before=%d after=%d; inode counts available=%t", beforeGC.AvailableBytes, afterGC.AvailableBytes, beforeGC.FreeInodes != nil && afterGC.FreeInodes != nil)
 	blobPath := func(d string) string {
 		hex := strings.TrimPrefix(d, "sha256:")
 		return filepath.Join(storage, "docker/registry/v2/blobs/sha256", hex[:2], hex, "data")
