@@ -730,35 +730,33 @@ func (e *exectorManager) slugShare(task *pb.TaskMessage) {
 	}
 	i.Logger.Info("开始分享应用", map[string]string{"step": "builder-exector", "status": "starting"})
 	status := "success"
-	go func() {
-		defer event.GetManager().ReleaseLogger(i.Logger)
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println(r)
-				debug.PrintStack()
-				i.Logger.Error("后端服务开小差，请重试或联系客服", map[string]string{"step": "callback", "status": "failure"})
-			}
-		}()
-		for n := 0; n < 2; n++ {
-			err := i.ShareService()
-			if err != nil {
-				logrus.Errorf("image share error: %s", err.Error())
-				if n < 1 {
-					i.Logger.Error(fmt.Sprintf("应用分享失败，开始重试: %s", err.Error()), map[string]string{"step": "builder-exector", "status": "failure"})
-				} else {
-					MetricErrorTaskNum++
-					i.Logger.Error(fmt.Sprintf("分享应用任务执行失败: %s", err.Error()), map[string]string{"step": "builder-exector", "status": "failure"})
-					status = "failure"
-				}
-			} else {
-				status = "success"
-				break
-			}
-		}
-		if err := i.UpdateShareStatus(status); err != nil {
-			logrus.Debugf("Add image share result error: %s", err.Error())
+	defer event.GetManager().ReleaseLogger(i.Logger)
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(r)
+			debug.PrintStack()
+			i.Logger.Error("后端服务开小差，请重试或联系客服", map[string]string{"step": "callback", "status": "failure"})
 		}
 	}()
+	for n := 0; n < 2; n++ {
+		err := i.ShareService()
+		if err != nil {
+			logrus.Errorf("image share error: %s", err.Error())
+			if n < 1 {
+				i.Logger.Error(fmt.Sprintf("应用分享失败，开始重试: %s", err.Error()), map[string]string{"step": "builder-exector", "status": "failure"})
+			} else {
+				MetricErrorTaskNum++
+				i.Logger.Error(fmt.Sprintf("分享应用任务执行失败: %s", err.Error()), map[string]string{"step": "builder-exector", "status": "failure"})
+				status = "failure"
+			}
+		} else {
+			status = "success"
+			break
+		}
+	}
+	if err := i.UpdateShareStatus(status); err != nil {
+		logrus.Debugf("Add image share result error: %s", err.Error())
+	}
 }
 
 // imageShare share app of docker image

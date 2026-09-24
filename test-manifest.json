@@ -982,6 +982,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.share-task-completion",
+      "title": "Slug sharing remains active until result persistence finishes",
+      "title_zh": "Slug sharing remains active until result persistence finishes",
+      "interface_type": "workflow",
+      "interface": "exectorManager.slugShare",
+      "code_paths": [
+        "builder/exector/exector.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_task_boundary_test.go",
+          "selector": "TestSlugShareTaskWaitsForResultPersistence"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.single-deletion-attempt",
       "title": "Consume deletion permission once and retain verification protection",
       "title_zh": "Consume deletion permission once and retain verification protection",

@@ -58,6 +58,7 @@
 | rainbond.cleanup.registry-service-coverage | Check every registry service instance without accepting partial coverage | active | regression | pkg/cleanup/kubeidentity.InspectRegistryService | pkg/cleanup/kubeidentity/registry_service_test.go::TestRegistryServiceRejectsMixedAndEmptyDeployments |
 | rainbond.cleanup.registry-stream-admission | Require admission before forwarding mutations without credential leakage | active | regression | pkg/cleanup/registryproxy.Proxy.ServeHTTP | pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth |
 | rainbond.cleanup.registry-upload-lifecycle | Keep upload leases across parts and drain existing sessions safely | active | regression | pkg/cleanup.AcquireUploadRequest | pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts |
+| rainbond.cleanup.share-task-completion | Slug sharing remains active until result persistence finishes | active | regression | exectorManager.slugShare | builder/exector/cleanup_task_boundary_test.go::TestSlugShareTaskWaitsForResultPersistence |
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
 | rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
@@ -1061,6 +1062,16 @@
 - 业务入口: `pkg/cleanup.AcquireUploadRequest`
 - 代码路径: `pkg/cleanup/upload_coordination.go`
 - 测试路径: `pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts`
+
+### Slug sharing remains active until result persistence finishes
+
+- Capability ID: `rainbond.cleanup.share-task-completion`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `exectorManager.slugShare`
+- 代码路径: `builder/exector/exector.go`
+- 测试路径: `builder/exector/cleanup_task_boundary_test.go::TestSlugShareTaskWaitsForResultPersistence`
 
 ### Consume deletion permission once and retain verification protection
 
