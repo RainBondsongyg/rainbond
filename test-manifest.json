@@ -857,6 +857,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.registered-storage-discovery",
+      "title": "Storage discovery rejects incomplete enrollment",
+      "title_zh": "Storage discovery rejects incomplete enrollment",
+      "interface_type": "workflow",
+      "interface": "cleanup.DiscoverStores",
+      "code_paths": [
+        "pkg/cleanup/discovery.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/discovery_test.go",
+          "selector": "TestDiscoverStoresRejectsIncompleteRegistration"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.registry-delete-permit",
       "title": "Bind registry deletion permits to immutable targets and expiry",
       "title_zh": "Bind registry deletion permits to immutable targets and expiry",

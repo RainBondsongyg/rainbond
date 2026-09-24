@@ -21,6 +21,36 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
+func TestStorageDiscoveryReturnsOnlyRegisteredIdentities(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "discovery.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.AutoMigrate(&model.CleanupStorage{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	binding, err := guard.ProvisionRegistryStorage(database, "owned-volume", "/owned/registry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }}
+	response := httptest.NewRecorder()
+	h.DiscoverStores(response, httptest.NewRequest("POST", "/stores/discover", strings.NewReader("{}")))
+	var result struct {
+		Bean struct {
+			Protocol int                   `json:"protocol"`
+			Stores   []guard.StoreIdentity `json:"stores"`
+		} `json:"bean"`
+	}
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Bean.Protocol != 1 || len(result.Bean.Stores) != 1 || result.Bean.Stores[0].StorageID != binding.StorageID {
+		t.Fatal("invalid storage discovery response", response.Code)
+	}
+	if strings.Contains(response.Body.String(), "/owned/registry") {
+		t.Fatal("unnecessary physical storage details exposed")
+	}
+}
+
 func TestCleanupCoordinationAuthenticationAndRequestBinding(t *testing.T) {
 	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "coordination.db"))
 	if err != nil {

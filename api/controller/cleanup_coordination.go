@@ -40,6 +40,24 @@ func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
 	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectParticipant: inspectSystemRegistryParticipant}
 }
 
+// DiscoverStores locates enrolled storage for authenticated platform producers.
+// It neither registers new storage nor enables deletion readiness.
+func (h *CleanupCoordinationHandler) DiscoverStores(w http.ResponseWriter, r *http.Request) {
+	var body struct{}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	stores, err := guard.DiscoverStores(h.database())
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int                   `json:"protocol"`
+		Stores   []guard.StoreIdentity `json:"stores"`
+	}{1, stores})
+}
+
 func coordinationError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code := http.StatusServiceUnavailable, "COORDINATION_UNAVAILABLE"
 	switch {
