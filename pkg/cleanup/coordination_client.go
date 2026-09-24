@@ -216,6 +216,19 @@ func (c *CoordinationClient) CompleteMaintenanceWork(ctx context.Context, r Coor
 	}{r, outcome})
 }
 
+// RecordMaintenanceMeasurement persists an observation without granting execution
+// or restoring writes. Only a trusted executor should report observations.
+func (c *CoordinationClient) RecordMaintenanceMeasurement(ctx context.Context, r CoordinationRequest, phase string, measurement StorageMeasurement) error {
+	if r.Kind != "gc" || (phase != "before" && phase != "after") || !IsValidStorageMeasurement(measurement) || measurement.StorageID != r.StorageID || measurement.Generation != r.Generation {
+		return ErrCoordinationChanged
+	}
+	return c.record(ctx, r, "maintenance/measurement", struct {
+		CoordinationRequest
+		Phase       string             `json:"phase"`
+		Measurement StorageMeasurement `json:"measurement"`
+	}{r, phase, measurement})
+}
+
 // BeginRestore durably records native restoration intent.
 func (c *CoordinationClient) BeginRestore(ctx context.Context, r CoordinationRequest) error {
 	return c.record(ctx, r, "maintenance/restore", r)

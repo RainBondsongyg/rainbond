@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -29,25 +30,6 @@ import (
 	"github.com/goodrain/rainbond/pkg/cleanup/registryproxy"
 	"github.com/jinzhu/gorm"
 )
-
-type ownedGCRecorder struct {
-	client   *guard.CoordinationClient
-	database *gorm.DB
-	request  guard.CoordinationRequest
-}
-
-func (r ownedGCRecorder) BeginGC(ctx context.Context, before registryproxy.StorageMeasurement) error {
-	if err := r.client.EnterMaintenance(ctx, r.request); err != nil {
-		return err
-	}
-	return guard.RecordMaintenanceMeasurement(r.database, r.request, "before", before)
-}
-func (r ownedGCRecorder) CompleteGC(ctx context.Context, outcome string) error {
-	return r.client.CompleteMaintenanceWork(ctx, r.request, outcome)
-}
-func (r ownedGCRecorder) ObserveGC(_ context.Context, after registryproxy.StorageMeasurement) error {
-	return guard.RecordMaintenanceMeasurement(r.database, r.request, "after", after)
-}
 
 // This owns every process, database, image and file. The fixture's ready state
 // proves isolated protocol behavior, not enrollment of production participants.
@@ -155,7 +137,7 @@ func runCoordinatedRegistryGC(t *testing.T, useExecutor bool) {
 	router.Use(middleware.FullToken)
 	base := "/v2/cleanup/stores/{storage_id}/operations"
 	router.Post(base, h.Acquire)
-	for suffix, handler := range map[string]http.HandlerFunc{"finish": h.Finish, "inspect": h.Inspect, "registry-permit": h.RegistryPermit, "attempt": h.BeginAttempt, "attempt/complete": h.CompleteAttempt, "upload": h.BindUpload, "upload/requests": h.AcquireUpload, "upload/requests/finish": h.FinishUpload, "maintenance/request": h.RequestMaintenance, "maintenance/enter": h.EnterMaintenance, "maintenance/complete": h.CompleteMaintenanceWork, "maintenance/restore": h.BeginRestore, "maintenance/restored": h.FinishRestore} {
+	for suffix, handler := range map[string]http.HandlerFunc{"finish": h.Finish, "inspect": h.Inspect, "registry-permit": h.RegistryPermit, "attempt": h.BeginAttempt, "attempt/complete": h.CompleteAttempt, "upload": h.BindUpload, "upload/requests": h.AcquireUpload, "upload/requests/finish": h.FinishUpload, "maintenance/measurement": h.RecordMaintenanceMeasurement, "maintenance/request": h.RequestMaintenance, "maintenance/enter": h.EnterMaintenance, "maintenance/complete": h.CompleteMaintenanceWork, "maintenance/restore": h.BeginRestore, "maintenance/restored": h.FinishRestore} {
 		router.Post(base+"/{operation_id}/"+suffix, handler)
 	}
 	router.Post("/v2/cleanup/stores/{storage_id}/uploads/lookup", h.LookupUpload)
@@ -277,7 +259,10 @@ func runCoordinatedRegistryGC(t *testing.T, useExecutor bool) {
 	request("POST", sidecar.URL+"/v2/test/new/blobs/uploads/", "", nil, "", 409)
 	stop()
 	t.Setenv("REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", t.TempDir())
-	recorder := ownedGCRecorder{client: client, database: database, request: gc}
+	recorder, err := registryproxy.NewGCRecorder(client, measurementBinding, gc)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if useExecutor {
 		if err := registryproxy.ExecuteGC(ctx, storage, measurementBinding, gc, binary, recorder); err != nil {
 			t.Fatal("owned executor GC failed", err)
@@ -313,6 +298,19 @@ func runCoordinatedRegistryGC(t *testing.T, useExecutor bool) {
 	beforeGC, afterGC, err := guard.MaintenanceMeasurements(database, gc)
 	if err != nil || beforeGC == nil || afterGC == nil || beforeGC.FilesystemID != afterGC.FilesystemID {
 		t.Fatal("bound GC observations missing", err)
+	}
+	if err := client.RecordMaintenanceMeasurement(ctx, gc, "after", *afterGC); err != nil {
+		t.Fatal("identical measurement retry failed", err)
+	}
+	changedMeasurement := *afterGC
+	changedMeasurement.FilesystemID = "different-filesystem"
+	if err := client.RecordMaintenanceMeasurement(ctx, gc, "after", changedMeasurement); !errors.Is(err, guard.ErrCoordinationChanged) {
+		t.Fatal("HTTP observation replaced immutable evidence", err)
+	}
+	wrongIdentity := gc
+	wrongIdentity.Owner = "another-executor"
+	if err := client.RecordMaintenanceMeasurement(ctx, wrongIdentity, "after", *afterGC); !errors.Is(err, guard.ErrCoordinationChanged) {
+		t.Fatal("observation accepted for another operation owner", err)
 	}
 	// Other processes also use the host filesystem. Its free-space delta is an
 	// observation, not proof that all changed bytes were reclaimed by this GC.

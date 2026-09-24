@@ -900,6 +900,7 @@ func (v2 *V2) cleanupCoordinationRouter() chi.Router {
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/enter", h.EnterMaintenance)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/cancel", h.CancelDrain)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/complete", h.CompleteMaintenanceWork)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/measurement", h.RecordMaintenanceMeasurement)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/restore", h.BeginRestore)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/restored", h.FinishRestore)
 	return r

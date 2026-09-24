@@ -238,6 +238,31 @@ func (h *CleanupCoordinationHandler) CompleteMaintenanceWork(w http.ResponseWrit
 	}{1, true})
 }
 
+// RecordMaintenanceMeasurement accepts immutable observations from an internal
+// executor; observations alone never complete GC or restore storage writes.
+func (h *CleanupCoordinationHandler) RecordMaintenanceMeasurement(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		guard.CoordinationRequest
+		Phase       string                   `json:"phase"`
+		Measurement guard.StorageMeasurement `json:"measurement"`
+	}
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.CoordinationRequest) {
+		return
+	}
+	if err := r.Context().Err(); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	if err := guard.RecordMaintenanceMeasurement(h.database(), body.CoordinationRequest, body.Phase, body.Measurement); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
+}
+
 // FinishRestore records successful native restoration or persistent uncertainty.
 func (h *CleanupCoordinationHandler) FinishRestore(w http.ResponseWriter, r *http.Request) {
 	var body struct {
