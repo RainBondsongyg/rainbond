@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,10 +30,41 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+type ownedGCRecorder struct {
+	client   *guard.CoordinationClient
+	database *gorm.DB
+	request  guard.CoordinationRequest
+}
+
+func (r ownedGCRecorder) BeginGC(ctx context.Context, before registryproxy.StorageMeasurement) error {
+	if err := r.client.EnterMaintenance(ctx, r.request); err != nil {
+		return err
+	}
+	return guard.RecordMaintenanceMeasurement(r.database, r.request, "before", before)
+}
+func (r ownedGCRecorder) CompleteGC(ctx context.Context, outcome string) error {
+	return r.client.CompleteMaintenanceWork(ctx, r.request, outcome)
+}
+func (r ownedGCRecorder) ObserveGC(_ context.Context, after registryproxy.StorageMeasurement) error {
+	return guard.RecordMaintenanceMeasurement(r.database, r.request, "after", after)
+}
+
 // This owns every process, database, image and file. The fixture's ready state
 // proves isolated protocol behavior, not enrollment of production participants.
 // capability_id: rainbond.cleanup.coordinated-registry-delete-gc
 func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
+	runCoordinatedRegistryGC(t, false)
+}
+
+// capability_id: rainbond.cleanup.registry-gc-executor
+func TestCoordinatedRegistryExecutorRealDeletionAndGC(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux descriptor-pinned GC executor requires /proc/self/fd")
+	}
+	runCoordinatedRegistryGC(t, true)
+}
+
+func runCoordinatedRegistryGC(t *testing.T, useExecutor bool) {
 	binary := os.Getenv("CLEANUP_TEST_REGISTRY_BINARY")
 	if binary == "" {
 		t.Skip("set CLEANUP_TEST_REGISTRY_BINARY to an official local Distribution binary")
@@ -196,13 +228,17 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	shared := []byte("owned shared layer")
 	manifests := map[string]string{}
 	configs := map[string]string{}
-	for _, repository := range []string{"test/selected", "test/retained"} {
+	for _, repository := range []string{"test/selected", "test/retained", "test/untagged"} {
 		configBody := []byte(fmt.Sprintf(`{"architecture":"amd64","os":"linux","config":{"Labels":{"fixture":%q}},"rootfs":{"type":"layers","diff_ids":[]}}`, repository))
 		configDigest := upload(repository, configBody)
 		layerDigest := upload(repository, shared)
 		configs[repository] = configDigest
 		manifest, _ := json.Marshal(map[string]interface{}{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "config": map[string]interface{}{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": configDigest, "size": len(configBody)}, "layers": []interface{}{map[string]interface{}{"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": layerDigest, "size": len(shared)}}})
-		request("PUT", sidecar.URL+"/v2/"+repository+"/manifests/v1", "application/vnd.oci.image.manifest.v1+json", manifest, "", 201)
+		reference := "v1"
+		if repository == "test/untagged" {
+			reference = digest(manifest)
+		}
+		request("PUT", sidecar.URL+"/v2/"+repository+"/manifests/"+reference, "application/vnd.oci.image.manifest.v1+json", manifest, "", 201)
 		manifests[repository] = digest(manifest)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; {
@@ -238,28 +274,42 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	if admitted, err := client.RequestMaintenance(ctx, gc); err != nil || !admitted {
 		t.Fatal(err)
 	}
-	if err := client.EnterMaintenance(ctx, gc); err != nil {
-		t.Fatal(err)
-	}
 	request("POST", sidecar.URL+"/v2/test/new/blobs/uploads/", "", nil, "", 409)
 	stop()
-	beforeGC, err := registryproxy.MeasureStorage(storage, measurementBinding)
-	if err != nil {
-		t.Fatal("owned storage could not be measured before GC", err)
+	t.Setenv("REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", t.TempDir())
+	recorder := ownedGCRecorder{client: client, database: database, request: gc}
+	if useExecutor {
+		if err := registryproxy.ExecuteGC(ctx, storage, measurementBinding, binary, recorder); err != nil {
+			t.Fatal("owned executor GC failed", err)
+		}
+	} else {
+		// This exercises the protocol and native GC, not the Linux executor.
+		before, err := registryproxy.MeasureStorage(storage, measurementBinding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := recorder.BeginGC(ctx, before); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.CommandContext(ctx, binary, "garbage-collect", configPath)
+		command.Env, command.Stdout, command.Stderr = environment, io.Discard, io.Discard
+		if err := command.Run(); err != nil {
+			t.Fatal("owned manual GC failed", err)
+		}
+		if err := recorder.CompleteGC(ctx, "succeeded"); err != nil {
+			t.Fatal(err)
+		}
+		after, err := registryproxy.MeasureStorage(storage, measurementBinding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := recorder.ObserveGC(ctx, after); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := guard.RecordMaintenanceMeasurement(database, gc, "before", beforeGC); err != nil {
-		t.Fatal(err)
-	}
-	command := exec.CommandContext(ctx, binary, "garbage-collect", configPath)
-	command.Env = environment
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
-		t.Fatal("owned offline GC failed")
-	}
-	afterGC, err := registryproxy.MeasureStorage(storage, measurementBinding)
-	if err != nil || beforeGC.FilesystemID != afterGC.FilesystemID || beforeGC.BindingFingerprint != afterGC.BindingFingerprint {
-		t.Fatal("GC observations are not from the same verified filesystem", err)
+	beforeGC, afterGC, err := guard.MaintenanceMeasurements(database, gc)
+	if err != nil || beforeGC == nil || afterGC == nil || beforeGC.FilesystemID != afterGC.FilesystemID {
+		t.Fatal("bound GC observations missing", err)
 	}
 	// Other processes also use the host filesystem. Its free-space delta is an
 	// observation, not proof that all changed bytes were reclaimed by this GC.
@@ -274,19 +324,14 @@ func TestCoordinatedRegistryRealDeletionAndGC(t *testing.T) {
 	if _, err := os.Stat(blobPath(digest(shared))); err != nil {
 		t.Fatal("GC removed retained shared layer")
 	}
-	if err := client.CompleteMaintenanceWork(ctx, gc, "succeeded"); err != nil {
-		t.Fatal(err)
-	}
-	if err := guard.RecordMaintenanceMeasurement(database, gc, "after", afterGC); err != nil {
-		t.Fatal(err)
-	}
-	if before, after, err := guard.MaintenanceMeasurements(database, gc); err != nil || before == nil || after == nil {
-		t.Fatal("GC observations were not persisted", err)
+	if _, err := os.Stat(blobPath(configs["test/untagged"])); err != nil {
+		t.Fatal("unselected untagged manifest content was deleted", err)
 	}
 	if err := client.BeginRestore(ctx, gc); err != nil {
 		t.Fatal(err)
 	}
 	stop = startRegistry()
+	request("GET", sidecar.URL+"/v2/test/untagged/manifests/"+manifests["test/untagged"], "", nil, "", 200)
 	request("GET", sidecar.URL+"/v2/test/retained/manifests/"+manifests["test/retained"], "", nil, "", 200)
 	request("POST", sidecar.URL+"/v2/test/new/blobs/uploads/", "", nil, "", 409)
 	if err := client.FinishRestore(ctx, gc, true); err != nil {

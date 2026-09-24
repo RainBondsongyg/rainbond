@@ -17,16 +17,20 @@ type StorageMeasurement = coordination.StorageMeasurement
 // MeasureStorage observes capacity through the same open directory descriptor
 // used to validate the identity marker. It never creates or rewrites metadata.
 func MeasureStorage(root string, binding coordination.StorageRegistration) (StorageMeasurement, error) {
+	rootFD, err := openIdentityRoot(root)
+	if err != nil {
+		return StorageMeasurement{}, err
+	}
+	defer unix.Close(rootFD)
+	return measureStorageFD(rootFD, binding)
+}
+
+func measureStorageFD(rootFD int, binding coordination.StorageRegistration) (StorageMeasurement, error) {
 	denied := StorageMeasurement{}
 	fingerprint, err := binding.Fingerprint()
 	if err != nil {
 		return denied, ErrStorageIdentity
 	}
-	rootFD, err := openIdentityRoot(root)
-	if err != nil {
-		return denied, err
-	}
-	defer unix.Close(rootFD)
 	directory, err := unix.Openat(rootFD, identityDirectory, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return denied, ErrStorageIdentity
