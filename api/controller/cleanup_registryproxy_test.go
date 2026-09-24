@@ -279,8 +279,11 @@ func runCoordinatedRegistryGC(t *testing.T, useExecutor bool) {
 	t.Setenv("REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", t.TempDir())
 	recorder := ownedGCRecorder{client: client, database: database, request: gc}
 	if useExecutor {
-		if err := registryproxy.ExecuteGC(ctx, storage, measurementBinding, binary, recorder); err != nil {
+		if err := registryproxy.ExecuteGC(ctx, storage, measurementBinding, gc, binary, recorder); err != nil {
 			t.Fatal("owned executor GC failed", err)
+		}
+		if err := registryproxy.RecoverGCReceipt(ctx, storage, measurementBinding, gc, recorder); err != nil {
+			t.Fatal("original executor receipt could not be reconciled", err)
 		}
 	} else {
 		// This exercises the protocol and native GC, not the Linux executor.

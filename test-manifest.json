@@ -802,6 +802,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.durable-gc-receipt",
+      "title": "Recover only immutable GC execution evidence without replay",
+      "title_zh": "Recover only immutable GC execution evidence without replay",
+      "interface_type": "workflow",
+      "interface": "registryproxy.RecoverGCReceipt",
+      "code_paths": [
+        "pkg/cleanup/registryproxy/gc_receipt.go",
+        "pkg/cleanup/registryproxy/gc_executor.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/registryproxy/gc_receipt_test.go",
+          "selector": "TestGCReceiptIsBoundImmutableAndDoesNotPermitReplay"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.durable-maintenance-measurements",
       "title": "Persist GC measurements without releasing maintenance protection",
       "title_zh": "Persist GC measurements without releasing maintenance protection",

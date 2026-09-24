@@ -43,7 +43,7 @@ func TestGCExecutorDoesNotStartWithoutAdmission(t *testing.T) {
 	}
 	denied := errors.New("scope occupied")
 	recorder := &gcRecorderTest{beginError: denied}
-	if err := ExecuteGC(context.Background(), root, binding, binary, recorder); !errors.Is(err, denied) {
+	if err := ExecuteGC(context.Background(), root, binding, gcTestRequest(binding), binary, recorder); !errors.Is(err, denied) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(binary + ".ran"); !os.IsNotExist(err) {
@@ -76,7 +76,7 @@ func TestGCExecutorRecordsProcessFailureAndDoesNotRetryLostReceipt(t *testing.T)
 			if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf 'run\\n' >> \"$0.ran\"\nexit "+exit+"\n"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			err := ExecuteGC(context.Background(), root, binding, binary, recorder)
+			err := ExecuteGC(context.Background(), root, binding, gcTestRequest(binding), binary, recorder)
 			if err == nil {
 				t.Fatal("incomplete cleanup reported success")
 			}
@@ -88,9 +88,21 @@ func TestGCExecutorRecordsProcessFailureAndDoesNotRetryLostReceipt(t *testing.T)
 				if !errors.Is(err, recorder.completeError) || recorder.outcome != "succeeded" || recorder.observed != 0 {
 					t.Fatal("lost receipt treated as persisted success", err)
 				}
+				recorder.completeError = nil
+				if err := RecoverGCReceipt(context.Background(), root, binding, gcTestRequest(binding), recorder); err != nil {
+					t.Fatal("durable outcome could not be recovered", err)
+				}
+				recovered, err := os.ReadFile(binary + ".ran")
+				if err != nil || string(recovered) != "run\n" || recorder.completed != 2 || recorder.observed != 1 {
+					t.Fatal("recovery restarted GC or lost its outcome", err)
+				}
 			} else if !errors.Is(err, ErrGCExecution) || recorder.outcome != "failed" || recorder.observed != 1 {
 				t.Fatal("known process failure misclassified", err)
 			}
 		})
 	}
+}
+
+func gcTestRequest(binding coordination.StorageRegistration) coordination.CoordinationRequest {
+	return coordination.CoordinationRequest{StorageID: binding.StorageID, Generation: binding.Generation, OperationID: "owned-gc", Owner: "executor-test", Kind: "gc", Scope: "*", Fingerprint: "confirmation"}
 }

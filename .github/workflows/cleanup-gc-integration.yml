@@ -51,5 +51,5 @@ jobs:
         run: |
           set -euo pipefail
           test -x "$CLEANUP_TEST_REGISTRY_BINARY"
-          go test -p 1 ./pkg/cleanup/registryproxy -run '^TestGCExecutor' -count=1 -v
+          go test -p 1 ./pkg/cleanup/registryproxy -run '^(TestGCExecutor|TestGCReceipt|TestUnknownGCReceipt)' -count=1 -v
           go test -p 1 ./api/controller -run '^TestCoordinatedRegistryExecutorRealDeletionAndGC$' -count=1 -v

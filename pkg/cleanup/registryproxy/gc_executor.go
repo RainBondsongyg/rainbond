@@ -35,9 +35,12 @@ var ErrGCPlatform = errors.New("descriptor-pinned registry GC requires Linux")
 // directory descriptor. The trusted launcher must verify the executable/container
 // identity and ingress isolation; neither a browser path nor a tag is sufficient.
 // Process interruption never authorizes an automatic retry or write restoration.
-func ExecuteGC(ctx context.Context, root string, binding coordination.StorageRegistration, binary string, recorder GCExecutionRecorder) error {
+func ExecuteGC(ctx context.Context, root string, binding coordination.StorageRegistration, request coordination.CoordinationRequest, binary string, recorder GCExecutionRecorder) error {
 	if runtime.GOOS != "linux" {
 		return ErrGCPlatform
+	}
+	if _, _, err := gcReceiptKey(binding, request); err != nil {
+		return err
 	}
 	if recorder == nil || !filepath.IsAbs(binary) {
 		return ErrGCExecution
@@ -76,6 +79,11 @@ func ExecuteGC(ctx context.Context, root string, binding coordination.StorageReg
 	if err := recorder.BeginGC(ctx, before); err != nil {
 		return err
 	}
+	journal, err := reserveGCReceipt(fd, binding, request, before)
+	if err != nil {
+		return err
+	}
+	defer journal.Close()
 	// Do not use --delete-untagged: retained untagged manifests were not selected.
 	command := exec.CommandContext(ctx, binary, "garbage-collect", gcDescriptorPath(4))
 	command.ExtraFiles = []*os.File{rootFile, configuration}
@@ -98,6 +106,18 @@ func ExecuteGC(ctx context.Context, root string, binding coordination.StorageReg
 	if errors.Is(runErr, exec.ErrWaitDelay) || (command.Process != nil && command.ProcessState == nil) {
 		outcome = "unknown"
 	}
+	var after *StorageMeasurement
+	var measurementErr error
+	if outcome != "unknown" {
+		observed, err := measureStorageFD(fd, binding)
+		measurementErr = err
+		if err == nil {
+			after = &observed
+		}
+	}
+	if err := journal.Complete(outcome, after); err != nil {
+		return err
+	}
 	ack, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if err := recorder.CompleteGC(ack, outcome); err != nil {
@@ -106,14 +126,41 @@ func ExecuteGC(ctx context.Context, root string, binding coordination.StorageReg
 	if outcome == "unknown" {
 		return coordination.ErrCoordinationUncertain
 	}
-	after, err := measureStorageFD(fd, binding)
-	if err != nil {
-		return err
+	if measurementErr != nil {
+		return measurementErr
 	}
-	if err := recorder.ObserveGC(ack, after); err != nil {
+	if err := recorder.ObserveGC(ack, *after); err != nil {
 		return err
 	}
 	if runErr != nil {
+		return ErrGCExecution
+	}
+	return nil
+}
+
+// RecoverGCReceipt forwards the original durable outcome without running GC or
+// issuing another admission. Write restoration remains a separate verified step.
+func RecoverGCReceipt(ctx context.Context, root string, binding coordination.StorageRegistration, request coordination.CoordinationRequest, recorder GCExecutionRecorder) error {
+	if recorder == nil {
+		return ErrGCExecution
+	}
+	receipt, err := ReadGCReceipt(root, binding, request)
+	if err != nil {
+		return err
+	}
+	if receipt.Outcome == "unknown" {
+		return coordination.ErrCoordinationUncertain
+	}
+	if err := recorder.CompleteGC(ctx, receipt.Outcome); err != nil {
+		return err
+	}
+	if receipt.After == nil {
+		return ErrStorageIdentity
+	}
+	if err := recorder.ObserveGC(ctx, *receipt.After); err != nil {
+		return err
+	}
+	if receipt.Outcome == "failed" {
 		return ErrGCExecution
 	}
 	return nil

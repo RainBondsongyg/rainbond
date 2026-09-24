@@ -7,7 +7,8 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
-func validMeasurement(value StorageMeasurement) bool {
+// IsValidStorageMeasurement validates observation structure, not its provenance.
+func IsValidStorageMeasurement(value StorageMeasurement) bool {
 	if value.Protocol != 1 || value.ObservedAt.IsZero() || !coordinationIdentity.MatchString(value.FilesystemID) || value.TotalBytes == 0 || value.FreeBytes > value.TotalBytes || value.AvailableBytes > value.FreeBytes {
 		return false
 	}
@@ -20,7 +21,7 @@ func validMeasurement(value StorageMeasurement) bool {
 // RecordMaintenanceMeasurement stores immutable executor observations. It does
 // not confirm GC success, grant execution, or release maintenance protection.
 func RecordMaintenanceMeasurement(database *gorm.DB, r CoordinationRequest, phase string, value StorageMeasurement) error {
-	if !r.valid() || r.Kind != "gc" || (phase != "before" && phase != "after") || !validMeasurement(value) || value.StorageID != r.StorageID || value.Generation != r.Generation {
+	if !r.valid() || r.Kind != "gc" || (phase != "before" && phase != "after") || !IsValidStorageMeasurement(value) || value.StorageID != r.StorageID || value.Generation != r.Generation {
 		return ErrCoordinationChanged
 	}
 	raw, err := json.Marshal(value)
@@ -68,7 +69,7 @@ func RecordMaintenanceMeasurement(database *gorm.DB, r CoordinationRequest, phas
 			return ErrCoordinationChanged
 		}
 		var before StorageMeasurement
-		if json.Unmarshal([]byte(op.BeforeMeasurement), &before) != nil || !validMeasurement(before) || before.FilesystemID != value.FilesystemID || before.BindingFingerprint != value.BindingFingerprint || value.ObservedAt.Before(before.ObservedAt) {
+		if json.Unmarshal([]byte(op.BeforeMeasurement), &before) != nil || !IsValidStorageMeasurement(before) || before.FilesystemID != value.FilesystemID || before.BindingFingerprint != value.BindingFingerprint || value.ObservedAt.Before(before.ObservedAt) {
 			return ErrCoordinationChanged
 		}
 	}
@@ -98,7 +99,7 @@ func MaintenanceMeasurements(database *gorm.DB, r CoordinationRequest) (*Storage
 			return nil, nil
 		}
 		var value StorageMeasurement
-		if json.Unmarshal([]byte(raw), &value) != nil || !validMeasurement(value) || value.StorageID != r.StorageID || value.Generation != r.Generation {
+		if json.Unmarshal([]byte(raw), &value) != nil || !IsValidStorageMeasurement(value) || value.StorageID != r.StorageID || value.Generation != r.Generation {
 			return nil, ErrCoordinationChanged
 		}
 		return &value, nil
