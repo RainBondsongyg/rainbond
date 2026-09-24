@@ -1089,6 +1089,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.version-reference-coordination",
+      "title": "Version writes serialize with manifest deletion",
+      "title_zh": "Version writes serialize with manifest deletion",
+      "interface_type": "workflow",
+      "interface": "VersionInfoDaoImpl",
+      "code_paths": [
+        "db/mysql/dao/version.go",
+        "pkg/cleanup/reference_mutation.go"
+      ],
+      "tests": [
+        {
+          "path": "db/mysql/dao/version_cleanup_test.go",
+          "selector": "TestVersionCreationCannotRaceManifestDeletion"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.version-update-no-resurrection",
       "title": "Version callbacks preserve activation and never recreate retired records",
       "title_zh": "Version callbacks preserve activation and never recreate retired records",

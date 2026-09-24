@@ -1,16 +1,86 @@
 package dao
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/goodrain/rainbond/db/model"
+	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
+
+func TestVersionWritesWithoutEnrolledCleanupStorage(t *testing.T) {
+	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "versions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.LogMode(false)
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	versions := &VersionInfoDaoImpl{DB: database}
+	record := &model.VersionInfo{ServiceID: "service", BuildVersion: "new", EventID: "event", ImageName: "goodrain.me/team/component:v1"}
+	if err := versions.AddModel(record); err != nil {
+		t.Fatal("ordinary build cannot create its version", err)
+	}
+	record.FinalStatus = "success"
+	if err := versions.UpdateModel(record); err != nil {
+		t.Fatal("ordinary build cannot finish its version", err)
+	}
+	var stored model.VersionInfo
+	if err := database.First(&stored, record.ID).Error; err != nil || stored.FinalStatus != "success" || stored.ActivationRevision == "" {
+		t.Fatal("version was not durably committed", err)
+	}
+	if err := database.Delete(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := versions.UpdateModel(record); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatal("late callback recreated retired version", err)
+	}
+}
+
+// capability_id: rainbond.cleanup.version-reference-coordination
+func TestVersionCreationCannotRaceManifestDeletion(t *testing.T) {
+	for _, update := range []bool{false, true} {
+		t.Run(fmt.Sprintf("update=%v", update), func(t *testing.T) {
+			raw, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			database, err := gorm.Open("mysql", raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			database.LogMode(false)
+			mock.ExpectBegin()
+			mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE$").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}).AddRow("hub", "one", "ready"))
+			mock.ExpectQuery("SELECT .*cleanup_operations.*FOR UPDATE$").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "kind", "scope", "state"}).AddRow("hub", "one", "delete", "team/component", "executing"))
+			mock.ExpectRollback()
+			record := &model.VersionInfo{Model: model.Model{ID: 7}, ServiceID: "service", BuildVersion: "new", ImageName: "goodrain.me/team/component:latest"}
+			if update {
+				err = (&VersionInfoDaoImpl{DB: database}).UpdateModel(record)
+			} else {
+				err = (&VersionInfoDaoImpl{DB: database}).AddModel(record)
+			}
+			if !errors.Is(err, cleanupguard.ErrCoordinationBusy) {
+				t.Fatal("version was not rejected by deletion coordination", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 // capability_id: rainbond.cleanup.version-update-no-resurrection
 func TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation(t *testing.T) {
@@ -20,7 +90,7 @@ func TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation(t *testing.
 	}{{"changed", 1, 1}, {"unchanged", 0, 1}, {"retired", 0, 0}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			raw, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherFunc(func(expected, actual string) error {
-				if strings.HasPrefix(actual, "UPDATE") {
+				if strings.HasPrefix(actual, "UPDATE") && strings.Contains(actual, "tenant_service_version") {
 					if strings.Contains(actual, "activation_revision") {
 						return fmt.Errorf("stale callback overwrites activation checkpoint")
 					}
@@ -43,10 +113,16 @@ func TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation(t *testing.
 			defer database.Close()
 			database.LogMode(false)
 			mock.ExpectBegin()
+			mock.ExpectExec("UPDATE .*cleanup_storage").WillReturnResult(sqlmock.NewResult(0, 0))
+			mock.ExpectQuery("SELECT .*cleanup_storage.*FOR UPDATE$").WillReturnRows(sqlmock.NewRows([]string{"storage_id", "generation", "mode"}))
 			mock.ExpectExec("UPDATE .*tenant_service_version.* WHERE .*ID.*service_id.*build_version.*event_id").WillReturnResult(sqlmock.NewResult(0, scenario.affected))
-			mock.ExpectCommit()
 			if scenario.affected == 0 {
 				mock.ExpectQuery("SELECT count.*tenant_service_version").WithArgs(uint(7), "service", "old", "event").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(scenario.remaining))
+			}
+			if scenario.remaining == 0 {
+				mock.ExpectRollback()
+			} else {
+				mock.ExpectCommit()
 			}
 			record := &model.VersionInfo{Model: model.Model{ID: 7}, ServiceID: "service", BuildVersion: "old", EventID: "event", ActivationRevision: "stale", Cmd: ""}
 			err = (&VersionInfoDaoImpl{DB: database}).UpdateModel(record)

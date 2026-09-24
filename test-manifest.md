@@ -63,6 +63,7 @@
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
 | rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
+| rainbond.cleanup.version-reference-coordination | Version writes serialize with manifest deletion | active | regression | VersionInfoDaoImpl | db/mysql/dao/version_cleanup_test.go::TestVersionCreationCannotRaceManifestDeletion |
 | rainbond.cleanup.version-update-no-resurrection | Version callbacks preserve activation and never recreate retired records | active | regression | VersionInfoDaoImpl.UpdateModel | db/mysql/dao/version_cleanup_test.go::TestVersionUpdateNeverRecreatesRetiredRecordsOrResetsActivation |
 | rainbond.cleanup.vm-activation-dispatch | Do not deploy VM after version activation rejection | active | regression | exectorManager.buildFromVM | builder/exector/cleanup_activation_test.go::TestVMBuildCannotDispatchAfterActivationRejected |
 | rainbond.cloud-storage.alioss-error-map | 将 AliOSS 服务错误转换为统一存储 SDK 错误 | active | regression | builder/cloudos.svcErrToS3SDKError | builder/cloudos/alioss_test.go::TestSvcErrToS3SDKError |
@@ -1112,6 +1113,16 @@
 - 业务入口: `OperationHandler.upgrade and ServiceAction.RollBack`
 - 代码路径: `api/handler/service.go`, `api/handler/service_operation.go`
 - 测试路径: `api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion`, `api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock`, `api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment`, `api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant`, `api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion`
+
+### Version writes serialize with manifest deletion
+
+- Capability ID: `rainbond.cleanup.version-reference-coordination`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `VersionInfoDaoImpl`
+- 代码路径: `db/mysql/dao/version.go`, `pkg/cleanup/reference_mutation.go`
+- 测试路径: `db/mysql/dao/version_cleanup_test.go::TestVersionCreationCannotRaceManifestDeletion`
 
 ### Version callbacks preserve activation and never recreate retired records
 

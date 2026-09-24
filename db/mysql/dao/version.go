@@ -19,12 +19,15 @@
 package dao
 
 import (
+	"strings"
+	"time"
+
+	"github.com/docker/distribution/reference"
 	"github.com/goodrain/rainbond/db/errors"
 	"github.com/goodrain/rainbond/db/model"
 	cleanupguard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/jinzhu/gorm"
 	pkgerr "github.com/pkg/errors"
-	"time"
 )
 
 // DeleteVersionByEventID DeleteVersionByEventID
@@ -53,19 +56,22 @@ func (c *VersionInfoDaoImpl) AddModel(mo model.Interface) error {
 	if len(result.CommitMsg) > 1024 {
 		result.CommitMsg = result.CommitMsg[:1024]
 	}
-	var oldResult model.VersionInfo
-	if ok := c.DB.Where("build_version=? and service_id=?", result.BuildVersion, result.ServiceID).Find(&oldResult).RecordNotFound(); ok {
+	return cleanupguard.WithReferenceMutation(c.DB, versionReferenceScopes(result), func(tx *gorm.DB) error {
+		var oldResult model.VersionInfo
+		err := tx.Where("build_version=? and service_id=?", result.BuildVersion, result.ServiceID).First(&oldResult).Error
+		if err == nil {
+			return errors.ErrRecordAlreadyExist
+		}
+		if !gorm.IsRecordNotFoundError(err) {
+			return err
+		}
 		revision, err := cleanupguard.NewActivationRevision()
 		if err != nil {
 			return err
 		}
 		result.ActivationRevision = revision
-		if err := c.DB.Create(result).Error; err != nil {
-			return err
-		}
-		return nil
-	}
-	return errors.ErrRecordAlreadyExist
+		return tx.Create(result).Error
+	})
 }
 
 // UpdateModel UpdateModel
@@ -77,38 +83,58 @@ func (c *VersionInfoDaoImpl) UpdateModel(mo model.Interface) error {
 	if result.ID == 0 || result.ServiceID == "" || result.BuildVersion == "" {
 		return gorm.ErrRecordNotFound
 	}
-	// Save performs FirstOrCreate when an UPDATE affects no rows. A late build
-	// callback must never resurrect a retired version or overwrite a newer
-	// activation checkpoint copied into an earlier in-memory VersionInfo.
-	changes := map[string]interface{}{}
-	for _, field := range c.DB.NewScope(result).Fields() {
-		if !field.IsNormal || field.IsPrimaryKey {
-			continue
+	return cleanupguard.WithReferenceMutation(c.DB, versionReferenceScopes(result), func(tx *gorm.DB) error {
+		// Save performs FirstOrCreate when an UPDATE affects no rows. A late build
+		// callback must never resurrect a retired version or overwrite a newer
+		// activation checkpoint copied into an earlier in-memory VersionInfo.
+		changes := map[string]interface{}{}
+		for _, field := range tx.NewScope(result).Fields() {
+			if !field.IsNormal || field.IsPrimaryKey {
+				continue
+			}
+			switch field.DBName {
+			case "activation_revision", "create_time", "event_id", "service_id", "build_version":
+				continue
+			}
+			changes[field.DBName] = field.Field.Interface()
 		}
-		switch field.DBName {
-		case "activation_revision", "create_time", "event_id", "service_id", "build_version":
-			continue
+		condition := "ID = ? AND service_id = ? AND build_version = ? AND event_id = ?"
+		args := []interface{}{result.ID, result.ServiceID, result.BuildVersion, result.EventID}
+		updated := tx.Model(&model.VersionInfo{}).Where(condition, args...).Updates(changes)
+		if updated.Error != nil {
+			return updated.Error
 		}
-		changes[field.DBName] = field.Field.Interface()
+		if updated.RowsAffected == 0 {
+			// MySQL can report zero for an unchanged row; distinguish that from a
+			// record deleted concurrently, without inserting it again.
+			var count int
+			if err := tx.Model(&model.VersionInfo{}).Where(condition, args...).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return gorm.ErrRecordNotFound
+			}
+		}
+		return nil
+	})
+}
+
+func versionReferenceScopes(result *model.VersionInfo) []string {
+	var scopes []string
+	image := result.ImageName
+	if image == "" && result.DeliveredType == "image" {
+		image = result.DeliveredPath
 	}
-	condition := "ID = ? AND service_id = ? AND build_version = ? AND event_id = ?"
-	args := []interface{}{result.ID, result.ServiceID, result.BuildVersion, result.EventID}
-	updated := c.DB.Model(&model.VersionInfo{}).Where(condition, args...).Updates(changes)
-	if updated.Error != nil {
-		return updated.Error
+	// An unqualified image can be resolved differently by the runtime and the
+	// platform. Do not infer a Docker Hub library scope for a local dependency.
+	first, _, qualified := strings.Cut(image, "/")
+	if !qualified || (!strings.ContainsAny(first, ".:") && first != "localhost") {
+		return nil
 	}
-	if updated.RowsAffected == 0 {
-		// MySQL can report zero for an unchanged row; distinguish that from a
-		// record deleted concurrently, without inserting it again.
-		var count int
-		if err := c.DB.Model(&model.VersionInfo{}).Where(condition, args...).Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
-			return gorm.ErrRecordNotFound
-		}
+	if named, err := reference.ParseNormalizedNamed(image); err == nil {
+		scopes = []string{reference.Path(named)}
 	}
-	return nil
+	return scopes
 }
 
 // VersionInfoDaoImpl VersionInfoDaoImpl
