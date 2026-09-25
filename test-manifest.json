@@ -1247,6 +1247,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-job-start",
+      "title": "Start only the original protected node cleanup Job",
+      "title_zh": "Start only the original protected node cleanup Job",
+      "interface_type": "workflow",
+      "interface": "StartNodeJob",
+      "code_paths": [
+        "pkg/cleanup/node_job_start.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_job_start_test.go",
+          "selector": "TestNodeJobStartChecksProtectionAndReconcilesLostReply"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.node-job-submission",
       "title": "Submit one suspended node cleanup Job and reconcile original identity",
       "title_zh": "Submit one suspended node cleanup Job and reconcile original identity",
