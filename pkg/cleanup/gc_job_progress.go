@@ -8,18 +8,19 @@ import (
 // GCJobProgress is a read-only receipt for one immutable GC operation. Finished
 // describes that operation, not the admission state of any newer maintenance.
 type GCJobProgress struct {
-	StorageID    string              `json:"storage_id"`
-	Generation   string              `json:"generation"`
-	OperationID  string              `json:"operation_id"`
-	State        string              `json:"state"`
-	Outcome      string              `json:"outcome,omitempty"`
-	JobNamespace string              `json:"job_namespace,omitempty"`
-	JobName      string              `json:"job_name,omitempty"`
-	JobUID       string              `json:"job_uid,omitempty"`
-	PodName      string              `json:"pod_name,omitempty"`
-	PodUID       string              `json:"pod_uid,omitempty"`
-	Before       *StorageMeasurement `json:"before,omitempty"`
-	After        *StorageMeasurement `json:"after,omitempty"`
+	StorageID     string              `json:"storage_id"`
+	Generation    string              `json:"generation"`
+	OperationID   string              `json:"operation_id"`
+	ExecutorState string              `json:"executor_state,omitempty"`
+	State         string              `json:"state"`
+	Outcome       string              `json:"outcome,omitempty"`
+	JobNamespace  string              `json:"job_namespace,omitempty"`
+	JobName       string              `json:"job_name,omitempty"`
+	JobUID        string              `json:"job_uid,omitempty"`
+	PodName       string              `json:"pod_name,omitempty"`
+	PodUID        string              `json:"pod_uid,omitempty"`
+	Before        *StorageMeasurement `json:"before,omitempty"`
+	After         *StorageMeasurement `json:"after,omitempty"`
 }
 
 // ReadGCJobProgress never creates, resumes or restores a task and discloses only

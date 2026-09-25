@@ -68,3 +68,11 @@ func (c *CoordinationClient) GCJobProgress(ctx context.Context, r CoordinationRe
 	}
 	return *progress, nil
 }
+
+// CancelFailedGCJob cannot release a task that consumed an execution permission.
+func (c *CoordinationClient) CancelFailedGCJob(ctx context.Context, r CoordinationRequest) error {
+	if r.Kind != "gc" {
+		return ErrCoordinationChanged
+	}
+	return c.record(ctx, r, "maintenance/job/cancel-failed", r)
+}

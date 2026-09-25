@@ -899,6 +899,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-failed-before-admission",
+      "title": "Cancel failed GC only before execution admission",
+      "title_zh": "Cancel failed GC only before execution admission",
+      "interface_type": "view_endpoint",
+      "interface": "POST maintenance/job/cancel-failed",
+      "code_paths": [
+        "api/controller/cleanup_gc_restore.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_gc_failed_test.go",
+          "selector": "TestFailedGCBeforeAdmissionCanEndMaintenanceWithoutDeletion"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-job-execution-api",
       "title": "Grant verified GC Job execution once after writer drain",
       "title_zh": "Grant verified GC Job execution once after writer drain",

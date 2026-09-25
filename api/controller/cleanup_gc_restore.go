@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+
 	guard "github.com/goodrain/rainbond/pkg/cleanup"
 	"github.com/goodrain/rainbond/pkg/cleanup/kubeidentity"
 	httputil "github.com/goodrain/rainbond/util/http"
@@ -103,8 +106,110 @@ func (h *CleanupCoordinationHandler) GCJobProgress(w http.ResponseWriter, r *htt
 		coordinationError(w, r, err)
 		return
 	}
+	if progress.State != "finished" && progress.JobUID != "" {
+		progress.ExecutorState = "unknown"
+		if h.gcTarget != nil {
+			client, namespace, _, targetErr := h.gcTarget()
+			if targetErr == nil && client != nil && namespace == progress.JobNamespace {
+				if job, lookupErr := guard.ReconcileGCJob(r.Context(), h.database(), client.BatchV1().Jobs(namespace), request); lookupErr == nil {
+					progress.ExecutorState = gcExecutorState(job)
+					if progress.ExecutorState == "failed" || progress.ExecutorState == "succeeded" {
+						if latest, readErr := guard.ReadGCJobProgress(h.database(), request); readErr == nil && latest.JobUID == progress.JobUID {
+							latest.ExecutorState = progress.ExecutorState
+							progress = latest
+						}
+					}
+				}
+			}
+		}
+	}
 	httputil.ReturnSuccess(r, w, struct {
 		Protocol int                 `json:"protocol"`
 		GCJob    guard.GCJobProgress `json:"gc_job"`
 	}{1, progress})
+}
+
+func gcExecutorState(job *batchv1.Job) string {
+	if job == nil {
+		return "unknown"
+	}
+	failed, complete := false, false
+	for _, condition := range job.Status.Conditions {
+		if condition.Status != corev1.ConditionTrue {
+			continue
+		}
+		failed = failed || condition.Type == batchv1.JobFailed
+		complete = complete || condition.Type == batchv1.JobComplete
+	}
+	if failed && complete {
+		return "unknown"
+	}
+	if job.Status.Active > 0 {
+		if failed || complete {
+			return "unknown"
+		}
+		return "running"
+	}
+	if failed {
+		return "failed"
+	}
+	if complete {
+		return "succeeded"
+	}
+	return "waiting"
+}
+
+// CancelFailedGCJob ends maintenance only when the original Job has failed and
+// no execution permission was granted. The final DB transition checks this
+// atomically, so a concurrent late admission cannot be canceled or unlocked.
+func (h *CleanupCoordinationHandler) CancelFailedGCJob(w http.ResponseWriter, r *http.Request) {
+	var request guard.CoordinationRequest
+	if !coordinationDecode(w, r, &request) || !coordinationScopeFromRoute(w, r, &request) {
+		return
+	}
+	database := h.database()
+	progress, err := guard.ReadGCJobProgress(database, request)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	if progress.State == "finished" && progress.Outcome == "canceled" {
+		h.maintenanceTransitionResult(w, r)
+		return
+	}
+	if progress.State != "draining" || progress.JobUID == "" || h.gcTarget == nil {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
+	client, namespace, service, err := h.gcTarget()
+	if err != nil || client == nil || namespace != progress.JobNamespace {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
+	job, err := guard.ReconcileGCJob(r.Context(), database, client.BatchV1().Jobs(namespace), request)
+	if err != nil || gcExecutorState(job) != "failed" {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
+	storage, err := guard.StorageBinding(database, request.StorageID, request.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	current, err := kubeidentity.BuildRegistryGCJob(r.Context(), client, namespace, service, storage, request)
+	if err != nil || !kubeidentity.SameRegistryGCSource(job, current) {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
+	if err := guard.CancelMaintenanceDrain(database, request); err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	h.maintenanceTransitionResult(w, r)
+}
+func (h *CleanupCoordinationHandler) maintenanceTransitionResult(w http.ResponseWriter, r *http.Request) {
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int  `json:"protocol"`
+		Recorded bool `json:"recorded"`
+	}{1, true})
 }

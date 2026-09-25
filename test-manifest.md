@@ -53,6 +53,7 @@
 | rainbond.cleanup.gc-executor-command | Bind native GC command to the verified Job admission | active | regression | registry-gc.runGC | cmd/registry-gc/main_test.go::TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery |
 | rainbond.cleanup.gc-executor-identity | Verify GC pod ownership image and physical volume | active | regression | kubeidentity.InspectGCExecutor | pkg/cleanup/kubeidentity/gc_executor_test.go::TestGCExecutorIdentityRejectsUntrustedPodAndStorage |
 | rainbond.cleanup.gc-executor-termination | Require actual original GC container termination and unchanged source | active | regression | kubeidentity.InspectTerminatedGCExecutor | pkg/cleanup/kubeidentity/gc_executor_test.go::TestTerminatedGCExecutorRequiresActualOriginalContainerExit<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges |
+| rainbond.cleanup.gc-failed-before-admission | Cancel failed GC only before execution admission | active | integration | POST maintenance/job/cancel-failed | api/controller/cleanup_gc_failed_test.go::TestFailedGCBeforeAdmissionCanEndMaintenanceWithoutDeletion |
 | rainbond.cleanup.gc-job-execution-api | Grant verified GC Job execution once after writer drain | active | integration | POST maintenance/enter-job | api/controller/cleanup_gc_executor_test.go::TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce<br>pkg/cleanup/registryproxy/gc_recorder_test.go::TestGCJobRecorderUsesVerifiedGateWithoutFallback |
 | rainbond.cleanup.gc-job-progress | Expose only the bound GC operation receipt | active | regression | cleanup.ReadGCJobProgress | pkg/cleanup/gc_job_restore_test.go::TestGCProgressRejectsAnotherOperationIdentity |
 | rainbond.cleanup.gc-job-restore | Restore only the original verified GC operation with durable measurements | active | integration | cleanup.FinishGCJobRestore | pkg/cleanup/gc_job_restore_test.go::TestGCJobRestoreRequiresOriginalBindingAndMeasurements<br>api/controller/cleanup_gc_executor_test.go::TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce |
@@ -1031,6 +1032,16 @@
 - 业务入口: `kubeidentity.InspectTerminatedGCExecutor`
 - 代码路径: `pkg/cleanup/kubeidentity/gc_executor.go`, `pkg/cleanup/kubeidentity/gc_job_template.go`
 - 测试路径: `pkg/cleanup/kubeidentity/gc_executor_test.go::TestTerminatedGCExecutorRequiresActualOriginalContainerExit`, `pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges`
+
+### Cancel failed GC only before execution admission
+
+- Capability ID: `rainbond.cleanup.gc-failed-before-admission`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST maintenance/job/cancel-failed`
+- 代码路径: `api/controller/cleanup_gc_restore.go`
+- 测试路径: `api/controller/cleanup_gc_failed_test.go::TestFailedGCBeforeAdmissionCanEndMaintenanceWithoutDeletion`
 
 ### Grant verified GC Job execution once after writer drain
 
