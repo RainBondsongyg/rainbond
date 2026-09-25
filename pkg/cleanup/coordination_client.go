@@ -15,10 +15,10 @@ import (
 // ErrCoordinationUnavailable never includes an upstream URL, credential or body.
 var ErrCoordinationUnavailable = errors.New("cleanup coordination unavailable")
 
-// ErrCoordinationDenied indicates that the internal participant was rejected.
 // ErrCoordinationNotFound means no matching durable operation was recorded.
 var ErrCoordinationNotFound = errors.New("cleanup coordination operation not found")
 
+// ErrCoordinationDenied indicates that the internal participant was rejected.
 var ErrCoordinationDenied = errors.New("cleanup coordination authorization denied")
 
 // CoordinationClient is used by participants without direct Region DB access.
@@ -52,6 +52,7 @@ func NewCoordinationClient(endpoint, token string, allowHTTP bool, transports ..
 type coordinationResponse struct {
 	Msg  string `json:"msg"`
 	Bean struct {
+		GCJob             *GCJobProgress       `json:"gc_job"`
 		Protocol          int                  `json:"protocol"`
 		NewlyAdmitted     *bool                `json:"newly_admitted"`
 		Recorded          *bool                `json:"recorded"`

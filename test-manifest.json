@@ -923,6 +923,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-job-progress",
+      "title": "Expose only the bound GC operation receipt",
+      "title_zh": "Expose only the bound GC operation receipt",
+      "interface_type": "workflow",
+      "interface": "cleanup.ReadGCJobProgress",
+      "code_paths": [
+        "pkg/cleanup/gc_job_progress.go",
+        "api/controller/cleanup_gc_restore.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/gc_job_restore_test.go",
+          "selector": "TestGCProgressRejectsAnotherOperationIdentity"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-job-restore",
       "title": "Restore only the original verified GC operation with durable measurements",
       "title_zh": "Restore only the original verified GC operation with durable measurements",

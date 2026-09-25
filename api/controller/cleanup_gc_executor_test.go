@@ -61,6 +61,7 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job", h.SubmitGCJob)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/start", h.StartGCJob)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/restore", h.RestoreGCJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/status", h.GCJobProgress)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/measurement", h.RecordMaintenanceMeasurement)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/complete", h.CompleteMaintenanceWork)
 	server := httptest.NewServer(router)
@@ -190,6 +191,10 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	state, err = guard.InspectOperation(database, r)
 	if err != nil || state != "finished" {
 		t.Fatal(state, err)
+	}
+	progress, err := client.GCJobProgress(context.Background(), r)
+	if err != nil || progress.State != "finished" || progress.Outcome != "succeeded" || progress.Before == nil || progress.After == nil || progress.After.AvailableBytes != 150 {
+		t.Fatal("missing original outcome and measurements", progress, err)
 	}
 }
 

@@ -52,3 +52,19 @@ func (c *CoordinationClient) RestoreGCJob(ctx context.Context, r CoordinationReq
 	}
 	return c.record(ctx, r, "maintenance/job/restore", r)
 }
+
+// GCJobProgress reads the original task receipt without replaying any mutation.
+func (c *CoordinationClient) GCJobProgress(ctx context.Context, r CoordinationRequest) (GCJobProgress, error) {
+	if r.Kind != "gc" {
+		return GCJobProgress{}, ErrCoordinationChanged
+	}
+	response, err := c.call(ctx, r, "maintenance/job/status", r)
+	if err != nil {
+		return GCJobProgress{}, err
+	}
+	progress := response.Bean.GCJob
+	if progress == nil || progress.StorageID != r.StorageID || progress.Generation != r.Generation || progress.OperationID != r.OperationID {
+		return GCJobProgress{}, ErrCoordinationChanged
+	}
+	return *progress, nil
+}

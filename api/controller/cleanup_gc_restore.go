@@ -91,3 +91,20 @@ func (h *CleanupCoordinationHandler) RestoreGCJob(w http.ResponseWriter, r *http
 		Recorded bool `json:"recorded"`
 	}{1, true})
 }
+
+// GCJobProgress returns durable task state and actual recorded filesystem data.
+func (h *CleanupCoordinationHandler) GCJobProgress(w http.ResponseWriter, r *http.Request) {
+	var request guard.CoordinationRequest
+	if !coordinationDecode(w, r, &request) || !coordinationScopeFromRoute(w, r, &request) {
+		return
+	}
+	progress, err := guard.ReadGCJobProgress(h.database(), request)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol int                 `json:"protocol"`
+		GCJob    guard.GCJobProgress `json:"gc_job"`
+	}{1, progress})
+}

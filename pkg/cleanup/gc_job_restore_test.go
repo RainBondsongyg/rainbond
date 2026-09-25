@@ -87,3 +87,21 @@ func TestGCJobRestoreRequiresOriginalBindingAndMeasurements(t *testing.T) {
 		t.Fatal("writes remain blocked", err)
 	}
 }
+
+// capability_id: rainbond.cleanup.gc-job-progress
+func TestGCProgressRejectsAnotherOperationIdentity(t *testing.T) {
+	db, _ := coordinationDB(t)
+	r := operation("progress", "gc", "*")
+	if _, err := RequestMaintenance(db, r); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := ReadGCJobProgress(db, r)
+	if err != nil || progress.State != "draining" || progress.OperationID != r.OperationID || progress.JobUID != "" {
+		t.Fatal(progress, err)
+	}
+	changed := r
+	changed.Owner = "different"
+	if _, err := ReadGCJobProgress(db, changed); err == nil {
+		t.Fatal("foreign operation progress disclosed")
+	}
+}
