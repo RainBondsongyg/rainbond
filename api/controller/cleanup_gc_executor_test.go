@@ -18,6 +18,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
@@ -212,7 +213,9 @@ func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
 	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "rbd-hub", Namespace: "system", UID: "service-uid", ResourceVersion: "1"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "hub"}, Ports: []corev1.ServicePort{{Port: 5000, TargetPort: intstr.FromInt(5001)}}}}
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "system", UID: "pvc-uid"}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
 	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv", UID: "pv-uid"}, Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Namespace: "system", Name: "data", UID: "pvc-uid"}}, Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound}}
-	client := fake.NewSimpleClientset(hub, svc, pvc, pv)
+	image := "example.test/chaos@sha256:" + strings.Repeat("c", 64)
+	cleaner := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "chaos", Namespace: "system", UID: "chaos-uid", ResourceVersion: "1", Labels: map[string]string{"name": "rbd-chaos"}}, Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "chaos", Image: image, Command: []string{"/run/rainbond-chaos"}, Args: []string{"--clean-up=false"}}}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{Name: "chaos", ImageID: image, ContainerID: "containerd://chaos", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}}}
+	client := fake.NewSimpleClientset(hub, svc, pvc, pv, cleaner)
 	observed, err := kubeidentity.InspectNativeRegistry(context.Background(), client, "system", "rbd-hub", "hub", "hub-uid")
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +230,16 @@ func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
 	client.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
 		result, err := client.Tracker().List(corev1.SchemeGroupVersion.WithResource("pods"), corev1.SchemeGroupVersion.WithKind("Pod"), action.GetNamespace())
 		if err == nil {
-			result.(*corev1.PodList).ResourceVersion = "snapshot"
+			list := result.(*corev1.PodList)
+			selected := action.(ktesting.ListAction).GetListRestrictions().Labels
+			filtered := []corev1.Pod{}
+			for _, item := range list.Items {
+				if selected.Matches(labels.Set(item.Labels)) {
+					filtered = append(filtered, item)
+				}
+			}
+			list.Items = filtered
+			list.ResourceVersion = "snapshot"
 		}
 		return true, result, err
 	})

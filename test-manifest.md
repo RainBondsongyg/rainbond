@@ -61,6 +61,7 @@
 | rainbond.cleanup.gc-job-start | Start the recorded GC Job only after writer drain | active | regression | cleanup.StartGCJob | pkg/cleanup/gc_job_start_test.go::TestGCJobStartWaitsForWritersAndNeverReplaysLostStart<br>pkg/cleanup/gc_job_start_test.go::TestGCJobStartRejectsCanceledOperation |
 | rainbond.cleanup.gc-job-submission | Persist GC submission and reconcile without replay | active | regression | cleanup.SubmitSuspendedGCJob | pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionPersistsBeforeCreateAndReconcilesLostResponse<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionRejectsUnsafeRetrySettings<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionDefaultingAndMutation<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionCanceledAndDryRunFailureLeaveNoIntent |
 | rainbond.cleanup.gc-job-template | Derive GC Job from verified Registry storage and credential references | active | regression | kubeidentity.BuildRegistryGCJob | pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateUsesObservedStorageAndMountedCredentials<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateRejectsUnsafeSource |
+| rainbond.cleanup.gc-reject-legacy-cleaner | Reject GC while legacy automatic cleanup is enabled | active | regression | BuildRegistryGCJob | pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobRejectsLegacyAutomaticCleanup<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceTracksCleanerProcessButNotStatusHeartbeat |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
@@ -1122,6 +1123,16 @@
 - 业务入口: `kubeidentity.BuildRegistryGCJob`
 - 代码路径: `pkg/cleanup/kubeidentity/gc_job_template.go`, `api/controller/cleanup_gc_launch.go`
 - 测试路径: `pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateUsesObservedStorageAndMountedCredentials`, `pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateRejectsUnsafeSource`
+
+### Reject GC while legacy automatic cleanup is enabled
+
+- Capability ID: `rainbond.cleanup.gc-reject-legacy-cleaner`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `BuildRegistryGCJob`
+- 代码路径: `pkg/cleanup/kubeidentity/legacy_cleanup.go`, `pkg/cleanup/kubeidentity/gc_job_template.go`
+- 测试路径: `pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobRejectsLegacyAutomaticCleanup`, `pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceTracksCleanerProcessButNotStatusHeartbeat`
 
 ### Reject generic activation of retired version records
 

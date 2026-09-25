@@ -9,6 +9,7 @@ import (
 	coordination "github.com/goodrain/rainbond/pkg/cleanup"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
@@ -29,11 +30,20 @@ func gcTemplateFixture(t *testing.T) (*fake.Clientset, coordination.StorageRegis
 	sidecar.VolumeMounts = append(sidecar.VolumeMounts, corev1.VolumeMount{Name: "control", MountPath: "/control", ReadOnly: true})
 	pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{Name: "control", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "coordination"}}})
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coordinator", ContainerID: "containerd://coordinator", ImageID: sidecar.Image, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}, {Name: "registry", ImageID: "example.test/native@sha256:" + strings.Repeat("b", 64), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
-	client := fake.NewSimpleClientset(svc, pod, pvc, pv)
+	client := fake.NewSimpleClientset(svc, pod, pvc, pv, gcCleanerFixture())
 	client.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
 		value, err := client.Tracker().List(corev1.SchemeGroupVersion.WithResource("pods"), corev1.SchemeGroupVersion.WithKind("Pod"), action.GetNamespace())
 		if err == nil {
-			value.(*corev1.PodList).ResourceVersion = "snapshot"
+			list := value.(*corev1.PodList)
+			selected := action.(ktesting.ListAction).GetListRestrictions().Labels
+			filtered := []corev1.Pod{}
+			for _, item := range list.Items {
+				if selected.Matches(labels.Set(item.Labels)) {
+					filtered = append(filtered, item)
+				}
+			}
+			list.Items = filtered
+			list.ResourceVersion = "snapshot"
 		}
 		return true, value, err
 	})
@@ -137,5 +147,50 @@ func TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges(t *testing.T) 
 	changed, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
 	if err != nil || changed.Spec.Template.Annotations["rainbond.io/gc-source-fingerprint"] == fingerprint {
 		t.Fatal("changed native config not detected", err)
+	}
+}
+
+func gcCleanerFixture() *corev1.Pod {
+	image := "example.test/chaos@sha256:" + strings.Repeat("c", 64)
+	return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "chaos", Namespace: "system", UID: "chaos-uid", ResourceVersion: "1", Labels: map[string]string{"name": "rbd-chaos"}}, Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "chaos", Image: image, Command: []string{"/run/rainbond-chaos"}, Args: []string{"--clean-up=false"}}}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{Name: "chaos", ImageID: image, ContainerID: "containerd://chaos", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}}}
+}
+
+// capability_id: rainbond.cleanup.gc-reject-legacy-cleaner
+func TestGCJobRejectsLegacyAutomaticCleanup(t *testing.T) {
+	for _, args := range [][]string{nil, {"--clean-up=true"}, {"--clean-up=false", "--clean-up=true"}, {"--", "--clean-up=false"}} {
+		client, binding := gcTemplateFixture(t)
+		pod := gcCleanerFixture()
+		pod.Spec.Containers[0].Args = args
+		client.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{})
+		r := coordination.CoordinationRequest{StorageID: "store", Generation: "one", OperationID: "gc", Owner: "manual", Kind: "gc", Scope: "*", Fingerprint: "selection"}
+		if _, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r); err == nil {
+			t.Fatal("legacy cleaner allowed", args)
+		}
+	}
+}
+
+func TestGCSourceTracksCleanerProcessButNotStatusHeartbeat(t *testing.T) {
+	client, binding := gcTemplateFixture(t)
+	r := coordination.CoordinationRequest{StorageID: "store", Generation: "one", OperationID: "gc", Owner: "manual", Kind: "gc", Scope: "*", Fingerprint: "selection"}
+	original, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod := gcCleanerFixture()
+	pod.ResourceVersion = "2"
+	client.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{})
+	current, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
+	if err != nil || !SameRegistryGCSource(original, current) {
+		t.Fatal("status-only change invalidated source", err)
+	}
+	pod.Status.ContainerStatuses[0].ContainerID = "containerd://replacement"
+	client.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{})
+	current, err = BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
+	if err != nil || SameRegistryGCSource(original, current) {
+		t.Fatal("cleaner process replacement ignored", err)
+	}
+	client.CoreV1().Pods("system").Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+	if _, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r); err == nil {
+		t.Fatal("missing cleaner treated as disabled")
 	}
 }

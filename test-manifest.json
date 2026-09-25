@@ -1085,6 +1085,29 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-reject-legacy-cleaner",
+      "title": "Reject GC while legacy automatic cleanup is enabled",
+      "title_zh": "Reject GC while legacy automatic cleanup is enabled",
+      "interface_type": "workflow",
+      "interface": "BuildRegistryGCJob",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/legacy_cleanup.go",
+        "pkg/cleanup/kubeidentity/gc_job_template.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_job_template_test.go",
+          "selector": "TestGCJobRejectsLegacyAutomaticCleanup"
+        },
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_job_template_test.go",
+          "selector": "TestGCSourceTracksCleanerProcessButNotStatusHeartbeat"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.generic-activation-fence",
       "title": "Reject generic activation of retired version records",
       "title_zh": "Reject generic activation of retired version records",

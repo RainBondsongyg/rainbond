@@ -39,8 +39,13 @@ func BuildRegistryGCJob(ctx context.Context, client kubernetes.Interface, namesp
 		return nil, ErrBinding
 	}
 	sort.Slice(pods.Items, func(i, j int) bool { return pods.Items[i].Name < pods.Items[j].Name })
+	cleaners, err := inspectLegacyCleaners(ctx, client, namespace)
+	if err != nil {
+		return nil, err
+	}
 	var result *batchv1.Job
 	source := struct {
+		Cleaners   []legacyCleanerObservation
 		ServiceUID string
 		Service    corev1.ServiceSpec
 		Pods       []struct {
@@ -48,7 +53,7 @@ func BuildRegistryGCJob(ctx context.Context, client kubernetes.Interface, namesp
 			Spec        corev1.PodSpec
 			NativeImage string
 		}
-	}{ServiceUID: string(service.UID), Service: service.Spec}
+	}{Cleaners: cleaners, ServiceUID: string(service.UID), Service: service.Spec}
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.Annotations["rainbond.io/registry-gc-executor"] != "v1" || pod.Spec.NodeName == "" {
