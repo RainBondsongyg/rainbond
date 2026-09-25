@@ -79,6 +79,7 @@
 | rainbond.cleanup.registry-stream-admission | Require admission before forwarding mutations without credential leakage | active | regression | pkg/cleanup/registryproxy.Proxy.ServeHTTP | pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth |
 | rainbond.cleanup.registry-upload-lifecycle | Keep upload leases across parts and drain existing sessions safely | active | regression | pkg/cleanup.AcquireUploadRequest | pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts |
 | rainbond.cleanup.restore-producer-transaction | Keep restore metadata and result publication in admitted transactions | active | integration | BackupAPPRestore.withMetadataWrite | builder/exector/cleanup_restore_admission_test.go::TestRestoreMetadataRetainsAdmissionAndRollsBackFailure |
+| rainbond.cleanup.service_check_import_handoff | Preserve imported image references across component creation | active | regression | CleanServiceCheckData | api/handler/service_check_cleanup_test.go::TestServiceCheckCreationCleanupPreservesImportReferences |
 | rainbond.cleanup.share-task-completion | Slug sharing remains active until result persistence finishes | active | regression | exectorManager.slugShare | builder/exector/cleanup_task_boundary_test.go::TestSlugShareTaskWaitsForResultPersistence |
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
@@ -1300,6 +1301,16 @@
 - 业务入口: `BackupAPPRestore.withMetadataWrite`
 - 代码路径: `builder/exector/groupapp_restore.go`, `builder/exector/exector.go`
 - 测试路径: `builder/exector/cleanup_restore_admission_test.go::TestRestoreMetadataRetainsAdmissionAndRollsBackFailure`
+
+### Preserve imported image references across component creation
+
+- Capability ID: `rainbond.cleanup.service_check_import_handoff`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `CleanServiceCheckData`
+- 代码路径: `api/handler/etcd_handler.go`, `api/controller/resources.go`
+- 测试路径: `api/handler/service_check_cleanup_test.go::TestServiceCheckCreationCleanupPreservesImportReferences`
 
 ### Slug sharing remains active until result persistence finishes
 

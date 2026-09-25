@@ -1426,6 +1426,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.service_check_import_handoff",
+      "title": "Preserve imported image references across component creation",
+      "title_zh": "Preserve imported image references across component creation",
+      "interface_type": "workflow",
+      "interface": "CleanServiceCheckData",
+      "code_paths": [
+        "api/handler/etcd_handler.go",
+        "api/controller/resources.go"
+      ],
+      "tests": [
+        {
+          "path": "api/handler/service_check_cleanup_test.go",
+          "selector": "TestServiceCheckCreationCleanupPreservesImportReferences"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.share-task-completion",
       "title": "Slug sharing remains active until result persistence finishes",
       "title_zh": "Slug sharing remains active until result persistence finishes",
