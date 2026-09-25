@@ -19,7 +19,7 @@ type nativeBuildAdmission struct {
 // Admission precedes any native image work. Retries of an existing task do not
 // receive another execution grant. Unknown outcomes stay protective.
 func admitBuild(database *gorm.DB, kind, taskID string, body []byte) (*nativeBuildAdmission, error) {
-	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile" && kind != "tar-image" && kind != "service-check") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
+	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile" && kind != "tar-image" && kind != "service-check" && kind != "import_app" && kind != "backup_apps_restore") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
 		return nil, guard.ErrCoordinationChanged
 	}
 	stores, err := guard.DiscoverStores(database)

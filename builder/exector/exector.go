@@ -314,10 +314,13 @@ func (e *exectorManager) exec(task *pb.TaskMessage) (resultErr error) {
 		}
 	}()
 	completed := false
-	if task.TaskType == "share-plugin" {
+	if task.TaskType == "share-plugin" || task.TaskType == "import_app" || task.TaskType == "backup_apps_restore" {
 		admission, err := admitBuild(db.GetManager().DB(), task.TaskType, task.TaskId, task.TaskBody)
 		if err != nil {
 			return err
+		}
+		if bound, ok := worker.(interface{ setCleanupAdmission(*nativeBuildAdmission) }); ok {
+			bound.setCleanupAdmission(admission)
 		}
 		defer func() {
 			if err := admission.finish(completed); err != nil {
@@ -704,8 +707,8 @@ func (e *exectorManager) buildFromKubeBlocks(task *pb.TaskMessage) {
 	}
 
 	var configs = make(map[string]string)
-	if configsJson := gjson.GetBytes(task.TaskBody, "configs"); configsJson.Exists() {
-		configsJson.ForEach(func(key, value gjson.Result) bool {
+	if configsJSON := gjson.GetBytes(task.TaskBody, "configs"); configsJSON.Exists() {
+		configsJSON.ForEach(func(key, value gjson.Result) bool {
 			configs[key.String()] = value.String()
 			return true
 		})

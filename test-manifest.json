@@ -729,6 +729,30 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.app-import-admission",
+      "title": "Hold application import admission through metadata publication",
+      "title_zh": "Hold application import admission through metadata publication",
+      "interface_type": "workflow",
+      "interface": "exector.exec.import_app",
+      "code_paths": [
+        "builder/exector/exector.go",
+        "builder/exector/import_app.go",
+        "builder/exector/cleanup_image_admission.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_import_admission_test.go",
+          "selector": "TestImportWorkerHoldsAdmissionUntilPublication"
+        },
+        {
+          "path": "builder/exector/cleanup_import_admission_test.go",
+          "selector": "TestImportSuccessWaitsForMetadataUpload"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.coordinated-registry-delete-gc",
       "title": "Verify coordinated deletion and separate GC against isolated real Registry",
       "title_zh": "Verify coordinated deletion and separate GC against isolated real Registry",
@@ -1353,6 +1377,25 @@
         }
       ],
       "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.restore-producer-transaction",
+      "title": "Keep restore metadata and result publication in admitted transactions",
+      "title_zh": "Keep restore metadata and result publication in admitted transactions",
+      "interface_type": "workflow",
+      "interface": "BackupAPPRestore.withMetadataWrite",
+      "code_paths": [
+        "builder/exector/groupapp_restore.go",
+        "builder/exector/exector.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_restore_admission_test.go",
+          "selector": "TestRestoreMetadataRetainsAdmissionAndRollsBackFailure"
+        }
+      ],
+      "test_type": "integration",
       "status": "active"
     },
     {
