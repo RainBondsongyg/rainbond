@@ -2,6 +2,7 @@ package kubeidentity
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 
@@ -13,10 +14,23 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// ErrExecutorRunning distinguishes a verified live executor from changed identity.
+var ErrExecutorRunning = errors.New("original GC executor has not exited")
+
 // InspectGCExecutor verifies a live executor against an already reconciled,
 // durably bound Job. The caller must obtain Job and storage from Core, not from
 // request JSON. The executor image must be pinned to its platform manifest.
 func InspectGCExecutor(ctx context.Context, client kubernetes.Interface, serviceName string, job *batchv1.Job, podName, podUID string, binding coordination.StorageRegistration) (RegistryMountObservation, error) {
+	return inspectGCExecutor(ctx, client, serviceName, job, podName, podUID, binding, false)
+}
+
+// InspectTerminatedGCExecutor verifies the original container has exited; Job
+// phase, Pod name and a caller-provided success flag are not termination proof.
+func InspectTerminatedGCExecutor(ctx context.Context, client kubernetes.Interface, serviceName string, job *batchv1.Job, podName, podUID string, binding coordination.StorageRegistration) (RegistryMountObservation, error) {
+	return inspectGCExecutor(ctx, client, serviceName, job, podName, podUID, binding, true)
+}
+
+func inspectGCExecutor(ctx context.Context, client kubernetes.Interface, serviceName string, job *batchv1.Job, podName, podUID string, binding coordination.StorageRegistration, terminal bool) (RegistryMountObservation, error) {
 	denied := RegistryMountObservation{}
 	if client == nil || job == nil || job.UID == "" || job.Namespace == "" || job.Spec.Suspend == nil || *job.Spec.Suspend || job.DeletionTimestamp != nil || podName == "" || podUID == "" {
 		return denied, ErrBinding
@@ -25,7 +39,7 @@ func InspectGCExecutor(ctx context.Context, client kubernetes.Interface, service
 		return denied, ErrBinding
 	}
 	pod, err := client.CoreV1().Pods(job.Namespace).Get(ctx, podName, metav1.GetOptions{})
-	if err != nil || string(pod.UID) != podUID || pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning || len(pod.OwnerReferences) != 1 {
+	if err != nil || string(pod.UID) != podUID || pod.DeletionTimestamp != nil || len(pod.OwnerReferences) != 1 {
 		return denied, ErrBinding
 	}
 	owner := pod.OwnerReferences[0]
@@ -60,7 +74,15 @@ func InspectGCExecutor(ctx context.Context, client kubernetes.Interface, service
 		return denied, ErrBinding
 	}
 	status := pod.Status.ContainerStatuses[0]
-	if status.Name != container.Name || status.RestartCount != 0 || status.State.Running == nil || status.ContainerID == "" || status.LastTerminationState.Terminated != nil {
+	if status.Name != container.Name || status.RestartCount != 0 || status.ContainerID == "" || status.LastTerminationState.Terminated != nil {
+		return denied, ErrBinding
+	}
+	running := pod.Status.Phase == corev1.PodRunning && status.State.Running != nil && status.State.Terminated == nil
+	if terminal && !running {
+		if (pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed) || status.State.Terminated == nil || status.State.Running != nil || status.State.Terminated.FinishedAt.IsZero() {
+			return denied, ErrBinding
+		}
+	} else if !terminal && !running {
 		return denied, ErrBinding
 	}
 	imageID := strings.TrimPrefix(strings.TrimPrefix(status.ImageID, "docker-pullable://"), "containerd://")
@@ -90,6 +112,9 @@ func InspectGCExecutor(ctx context.Context, client kubernetes.Interface, service
 	currentJob, err := client.BatchV1().Jobs(job.Namespace).Get(ctx, job.Name, metav1.GetOptions{})
 	if err != nil || currentJob.UID != job.UID || currentJob.ResourceVersion != job.ResourceVersion {
 		return denied, ErrBinding
+	}
+	if terminal && running {
+		return denied, ErrExecutorRunning
 	}
 	return observed, nil
 }

@@ -876,6 +876,29 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-executor-termination",
+      "title": "Require actual original GC container termination and unchanged source",
+      "title_zh": "Require actual original GC container termination and unchanged source",
+      "interface_type": "workflow",
+      "interface": "kubeidentity.InspectTerminatedGCExecutor",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/gc_executor.go",
+        "pkg/cleanup/kubeidentity/gc_job_template.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_executor_test.go",
+          "selector": "TestTerminatedGCExecutorRequiresActualOriginalContainerExit"
+        },
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_job_template_test.go",
+          "selector": "TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-job-execution-api",
       "title": "Grant verified GC Job execution once after writer drain",
       "title_zh": "Grant verified GC Job execution once after writer drain",
@@ -894,6 +917,30 @@
         {
           "path": "pkg/cleanup/registryproxy/gc_recorder_test.go",
           "selector": "TestGCJobRecorderUsesVerifiedGateWithoutFallback"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.gc-job-restore",
+      "title": "Restore only the original verified GC operation with durable measurements",
+      "title_zh": "Restore only the original verified GC operation with durable measurements",
+      "interface_type": "workflow",
+      "interface": "cleanup.FinishGCJobRestore",
+      "code_paths": [
+        "pkg/cleanup/gc_job_restore.go",
+        "api/controller/cleanup_gc_restore.go",
+        "pkg/cleanup/maintenance.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/gc_job_restore_test.go",
+          "selector": "TestGCJobRestoreRequiresOriginalBindingAndMeasurements"
+        },
+        {
+          "path": "api/controller/cleanup_gc_executor_test.go",
+          "selector": "TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce"
         }
       ],
       "test_type": "integration",

@@ -44,3 +44,11 @@ func (c *CoordinationClient) StartGCJob(ctx context.Context, r CoordinationReque
 	}
 	return c.record(ctx, r, "maintenance/job/start", r)
 }
+
+// RestoreGCJob requests verified restoration, never an unconditional write flag.
+func (c *CoordinationClient) RestoreGCJob(ctx context.Context, r CoordinationRequest) error {
+	if r.Kind != "gc" {
+		return ErrCoordinationChanged
+	}
+	return c.record(ctx, r, "maintenance/job/restore", r)
+}

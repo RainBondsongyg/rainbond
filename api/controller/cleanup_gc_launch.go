@@ -104,7 +104,7 @@ func (h *CleanupCoordinationHandler) StartGCJob(w http.ResponseWriter, r *http.R
 		return
 	}
 	current, err := kubeidentity.BuildRegistryGCJob(r.Context(), client, namespace, service, storage, request)
-	if err != nil || len(job.Spec.Template.Spec.Containers) != 1 || current.Spec.Template.Spec.Containers[0].Image != job.Spec.Template.Spec.Containers[0].Image {
+	if err != nil || !kubeidentity.SameRegistryGCSource(job, current) {
 		coordinationError(w, r, guard.ErrCoordinationChanged)
 		return
 	}

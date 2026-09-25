@@ -2,6 +2,7 @@ package kubeidentity
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -69,5 +70,31 @@ func TestGCExecutorIdentityRejectsUntrustedPodAndStorage(t *testing.T) {
 				t.Fatal("unsafe GC executor accepted", kind)
 			}
 		})
+	}
+}
+
+// capability_id: rainbond.cleanup.gc-executor-termination
+func TestTerminatedGCExecutorRequiresActualOriginalContainerExit(t *testing.T) {
+	service, job, pod, pvc, pv, binding := gcExecutorObjects()
+	client := fake.NewSimpleClientset(service, job, pod, pvc, pv)
+	if _, err := InspectTerminatedGCExecutor(context.Background(), client, service.Name, job, pod.Name, string(pod.UID), binding); !errors.Is(err, ErrExecutorRunning) {
+		t.Fatal("running executor not reported as pending", err)
+	}
+	pod.Status.Phase = corev1.PodSucceeded
+	if _, err := client.CoreV1().Pods(pod.Namespace).Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectTerminatedGCExecutor(context.Background(), client, service.Name, job, pod.Name, string(pod.UID), binding); err == nil {
+		t.Fatal("Pod phase alone accepted")
+	}
+	pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, FinishedAt: metav1.Now()}}
+	if _, err := client.CoreV1().Pods(pod.Namespace).Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectTerminatedGCExecutor(context.Background(), client, service.Name, job, pod.Name, string(pod.UID), binding); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectTerminatedGCExecutor(context.Background(), client, service.Name, job, pod.Name, "other-pod", binding); err == nil {
+		t.Fatal("wrong Pod accepted")
 	}
 }

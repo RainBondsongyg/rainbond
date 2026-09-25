@@ -28,7 +28,7 @@ func gcTemplateFixture(t *testing.T) (*fake.Clientset, coordination.StorageRegis
 	sidecar.Args = []string{"--listen=:5001", "--upstream=http://127.0.0.1:5000", "--storage-id=store", "--storage-generation=one", "--volume-uid=" + binding.VolumeUID, "--registry-path=/var/lib/registry", "--storage-root=/registry", "--coordination-api=http://rbd-api.system:8443", "--allow-internal-http=true", "--credential-file=/control/token"}
 	sidecar.VolumeMounts = append(sidecar.VolumeMounts, corev1.VolumeMount{Name: "control", MountPath: "/control", ReadOnly: true})
 	pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{Name: "control", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "coordination"}}})
-	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coordinator", ContainerID: "containerd://coordinator", ImageID: sidecar.Image, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}, {Name: "registry", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coordinator", ContainerID: "containerd://coordinator", ImageID: sidecar.Image, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}, {Name: "registry", ImageID: "example.test/native@sha256:" + strings.Repeat("b", 64), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
 	client := fake.NewSimpleClientset(svc, pod, pvc, pv)
 	client.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
 		value, err := client.Tracker().List(corev1.SchemeGroupVersion.WithResource("pods"), corev1.SchemeGroupVersion.WithKind("Pod"), action.GetNamespace())
@@ -111,5 +111,31 @@ func TestGCJobTemplateRejectsUnsafeSource(t *testing.T) {
 				t.Fatal("unsafe source accepted")
 			}
 		})
+	}
+}
+
+// capability_id: rainbond.cleanup.gc-executor-termination
+func TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges(t *testing.T) {
+	client, binding := gcTemplateFixture(t)
+	r := coordination.CoordinationRequest{StorageID: "store", Generation: "one", OperationID: "gc", Owner: "manual", Kind: "gc", Scope: "*", Fingerprint: "selection"}
+	first, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := first.Spec.Template.Annotations["rainbond.io/gc-source-fingerprint"]
+	if len(fingerprint) != 64 {
+		t.Fatal("source identity not recorded")
+	}
+	pod, err := client.CoreV1().Pods("system").Get(context.Background(), "hub", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, corev1.EnvVar{Name: "REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED", Value: "true"})
+	if _, err := client.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := BuildRegistryGCJob(context.Background(), client, "system", "rbd-hub", binding, r)
+	if err != nil || changed.Spec.Template.Annotations["rainbond.io/gc-source-fingerprint"] == fingerprint {
+		t.Fatal("changed native config not detected", err)
 	}
 }

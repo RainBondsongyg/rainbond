@@ -2,10 +2,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/goodrain/rainbond/api/middleware"
@@ -25,6 +27,7 @@ import (
 )
 
 // capability_id: rainbond.cleanup.gc-job-execution-api
+// capability_id: rainbond.cleanup.gc-job-restore
 func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "gc.db"))
 	if err != nil {
@@ -57,6 +60,9 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/enter-job", h.EnterGCJob)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job", h.SubmitGCJob)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/start", h.StartGCJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/restore", h.RestoreGCJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/measurement", h.RecordMaintenanceMeasurement)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/complete", h.CompleteMaintenanceWork)
 	server := httptest.NewServer(router)
 	defer server.Close()
 	client, err := guard.NewCoordinationClient(server.URL, "gc-isolated-fixture", true)
@@ -134,6 +140,57 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	if err != nil || state != "exclusive" {
 		t.Fatal(state, err)
 	}
+	fingerprint, _ := binding.Fingerprint()
+	before := guard.StorageMeasurement{Protocol: 1, StorageID: r.StorageID, Generation: r.Generation, BindingFingerprint: fingerprint, FilesystemID: "owned-fs", ObservedAt: time.Now().UTC(), TotalBytes: 1000, FreeBytes: 100, AvailableBytes: 50}
+	if err := client.RecordMaintenanceMeasurement(context.Background(), r, "before", before); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CompleteMaintenanceWork(context.Background(), r, "succeeded"); err != nil {
+		t.Fatal(err)
+	}
+	after := before
+	after.ObservedAt = before.ObservedAt.Add(time.Second)
+	after.FreeBytes = 200
+	after.AvailableBytes = 150
+	if err := client.RecordMaintenanceMeasurement(context.Background(), r, "after", after); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RestoreGCJob(context.Background(), r); !errors.Is(err, guard.ErrCoordinationBusy) {
+		t.Fatal("still-running executor not reported as pending", err)
+	}
+	pod.Status.Phase = corev1.PodSucceeded
+	pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, FinishedAt: metav1.Now()}}
+	if _, err := kube.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	hub, err := kube.CoreV1().Pods("system").Get(context.Background(), "hub", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := hub.DeepCopy()
+	hub.Spec.Containers[0].Env = append(hub.Spec.Containers[0].Env, corev1.EnvVar{Name: "REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED", Value: "true"})
+	if _, err := kube.CoreV1().Pods("system").Update(context.Background(), hub, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RestoreGCJob(context.Background(), r); err == nil {
+		t.Fatal("changed registry configuration accepted")
+	}
+	if _, err := kube.CoreV1().Pods("system").Update(context.Background(), original, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RestoreGCJob(context.Background(), r); err != nil {
+		t.Fatal("verified restoration failed", err)
+	}
+	if err := kube.CoreV1().Pods("system").Delete(context.Background(), pod.Name, metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RestoreGCJob(context.Background(), r); err != nil {
+		t.Fatal("lost restoration acknowledgment not recoverable", err)
+	}
+	state, err = guard.InspectOperation(database, r)
+	if err != nil || state != "finished" {
+		t.Fatal(state, err)
+	}
 }
 
 func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
@@ -158,7 +215,7 @@ func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
 	sidecar := corev1.Container{Name: "coordinator", Image: native.Image, Command: []string{"/registry-coordinator"}, VolumeMounts: []corev1.VolumeMount{{Name: "data", MountPath: "/registry", SubPath: "owned", ReadOnly: true}, {Name: "control", MountPath: "/control", ReadOnly: true}}, Args: []string{"--listen=:5001", "--upstream=http://127.0.0.1:5000", "--storage-id=store", "--storage-generation=gen", "--volume-uid=" + observed.Mount.VolumeUID, "--registry-path=/registry", "--storage-root=/registry", "--coordination-api=http://rbd-api.system:8443", "--allow-internal-http=true", "--credential-file=/control/token"}}
 	hub.Spec.Containers = append(hub.Spec.Containers, sidecar)
 	hub.Spec.Volumes = append(hub.Spec.Volumes, corev1.Volume{Name: "control", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "coordination"}}})
-	hub.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coordinator", ImageID: native.Image, ContainerID: "containerd://coordinator", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+	hub.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "registry", ImageID: "example.test/native@sha256:" + strings.Repeat("b", 64), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}, {Name: "coordinator", ImageID: native.Image, ContainerID: "containerd://coordinator", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
 	if _, err := client.CoreV1().Pods("system").Update(context.Background(), hub, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}

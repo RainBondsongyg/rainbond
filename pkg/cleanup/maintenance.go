@@ -159,6 +159,9 @@ func CompleteMaintenanceWork(database *gorm.DB, r CoordinationRequest, outcome s
 // BeginMaintenanceRestore persists restore intent after a known GC outcome.
 func BeginMaintenanceRestore(database *gorm.DB, r CoordinationRequest) error {
 	return changeMaintenance(database, r, func(_ *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation) (bool, error) {
+		if hasGCJobBinding(op) {
+			return false, ErrCoordinationChanged
+		}
 		if op.State == "uncertain" {
 			return false, ErrCoordinationUncertain
 		}
@@ -175,6 +178,9 @@ func BeginMaintenanceRestore(database *gorm.DB, r CoordinationRequest) error {
 // original configuration. Database readiness is not that external verification.
 func FinishMaintenanceRestore(database *gorm.DB, r CoordinationRequest, confirmed bool) error {
 	return changeMaintenance(database, r, func(_ *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation) (bool, error) {
+		if hasGCJobBinding(op) {
+			return false, ErrCoordinationChanged
+		}
 		if op.State == "finished" && confirmed {
 			return false, nil
 		}

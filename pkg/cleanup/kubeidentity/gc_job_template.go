@@ -2,6 +2,7 @@ package kubeidentity
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/url"
@@ -39,6 +40,15 @@ func BuildRegistryGCJob(ctx context.Context, client kubernetes.Interface, namesp
 	}
 	sort.Slice(pods.Items, func(i, j int) bool { return pods.Items[i].Name < pods.Items[j].Name })
 	var result *batchv1.Job
+	source := struct {
+		ServiceUID string
+		Service    corev1.ServiceSpec
+		Pods       []struct {
+			UID         string
+			Spec        corev1.PodSpec
+			NativeImage string
+		}
+	}{ServiceUID: string(service.UID), Service: service.Spec}
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.Annotations["rainbond.io/registry-gc-executor"] != "v1" || pod.Spec.NodeName == "" {
@@ -88,6 +98,23 @@ func BuildRegistryGCJob(ctx context.Context, client kubernetes.Interface, namesp
 		if err != nil {
 			return nil, err
 		}
+		nativeImage := ""
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == native.Name {
+				if nativeImage != "" || status.State.Running == nil || status.ImageID == "" {
+					return nil, ErrBinding
+				}
+				nativeImage = status.ImageID
+			}
+		}
+		if nativeImage == "" {
+			return nil, ErrBinding
+		}
+		source.Pods = append(source.Pods, struct {
+			UID         string
+			Spec        corev1.PodSpec
+			NativeImage string
+		}{string(pod.UID), pod.Spec, nativeImage})
 		if result == nil {
 			result = job
 		} else if result.Spec.Template.Spec.Containers[0].Image != job.Spec.Template.Spec.Containers[0].Image {
@@ -98,6 +125,12 @@ func BuildRegistryGCJob(ctx context.Context, client kubernetes.Interface, namesp
 	if err != nil || current.UID != service.UID || current.ResourceVersion != service.ResourceVersion {
 		return nil, ErrBinding
 	}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		return nil, ErrBinding
+	}
+	sum := sha256.Sum256(raw)
+	result.Spec.Template.Annotations = map[string]string{"rainbond.io/gc-source-fingerprint": hex.EncodeToString(sum[:])}
 	return result, nil
 }
 
@@ -239,4 +272,15 @@ func registryGCJob(pod *corev1.Pod, native, sidecar *corev1.Container, args map[
 	}
 	job.Spec.Template.Spec.Containers = []corev1.Container{c}
 	return job, nil
+}
+
+// SameRegistryGCSource compares the installer-derived source snapshot retained
+// inside the durably hashed Job template with a fresh Kubernetes observation.
+func SameRegistryGCSource(original, current *batchv1.Job) bool {
+	if original == nil || current == nil || len(original.Spec.Template.Spec.Containers) != 1 || len(current.Spec.Template.Spec.Containers) != 1 {
+		return false
+	}
+	before := original.Spec.Template.Annotations["rainbond.io/gc-source-fingerprint"]
+	after := current.Spec.Template.Annotations["rainbond.io/gc-source-fingerprint"]
+	return len(before) == 64 && before == after && original.Spec.Template.Spec.Containers[0].Image == current.Spec.Template.Spec.Containers[0].Image
 }
