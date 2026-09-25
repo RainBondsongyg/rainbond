@@ -1247,6 +1247,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-job-submission",
+      "title": "Submit one suspended node cleanup Job and reconcile original identity",
+      "title_zh": "Submit one suspended node cleanup Job and reconcile original identity",
+      "interface_type": "workflow",
+      "interface": "SubmitSuspendedNodeJob",
+      "code_paths": [
+        "pkg/cleanup/node_job_submit.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_job_submit_test.go",
+          "selector": "TestNodeSubmissionReconcilesLostCreateWithoutRecreating"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.participant-replacement",
       "title": "Participant replacement preserves active deletion protection",
       "title_zh": "Participant replacement preserves active deletion protection",

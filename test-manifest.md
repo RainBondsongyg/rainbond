@@ -69,6 +69,7 @@
 | rainbond.cleanup.market-slug-task-completion | Market slug task waits for completion before returning | active | regression | exectorManager.buildFromMarketSlug | builder/exector/cleanup_task_boundary_test.go::TestMarketSlugTaskWaitsForCompletion |
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
 | rainbond.cleanup.node-job-intent | Persist immutable node execution identity before job creation | active | integration | PrepareNodeJob | pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation |
+| rainbond.cleanup.node-job-submission | Submit one suspended node cleanup Job and reconcile original identity | active | integration | SubmitSuspendedNodeJob | pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating |
 | rainbond.cleanup.participant-replacement | Participant replacement preserves active deletion protection | active | regression | cleanup.RegisterParticipant | pkg/cleanup/participant_test.go::TestParticipantReplacementWithdrawsReadinessWithoutLosingDeletion |
 | rainbond.cleanup.pending-import-references | Include retained tar import and check receipts in reference audits | active | regression | cleanup.collectRegionReferenceImages | pkg/cleanup/reference_import_test.go::TestImportedImagesRemainReferencedUntilTheirRecordsAreReleased<br>pkg/cleanup/reference_import_test.go::TestIncompleteImportRecordsCannotProveAbsence<br>pkg/cleanup/reference_import_test.go::TestRejectedAndNonImageChecksDoNotInventReferences |
 | rainbond.cleanup.plugin-version-reference-coordination | Plugin version writes respect selected deletion and cannot resurrect records | active | regression | PluginBuildVersionDaoImpl | db/mysql/dao/version_cleanup_test.go::TestPluginVersionWritesRespectDeletionAndNeverResurrect |
@@ -1205,6 +1206,16 @@
 - 业务入口: `PrepareNodeJob`
 - 代码路径: `pkg/cleanup/node_job.go`, `pkg/cleanup/coordination.go`, `pkg/cleanup/deletion_attempt.go`, `db/model/cleanup_coordination.go`
 - 测试路径: `pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation`
+
+### Submit one suspended node cleanup Job and reconcile original identity
+
+- Capability ID: `rainbond.cleanup.node-job-submission`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `SubmitSuspendedNodeJob`
+- 代码路径: `pkg/cleanup/node_job_submit.go`
+- 测试路径: `pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating`
 
 ### Participant replacement preserves active deletion protection
 
