@@ -1,0 +1,198 @@
+package cleanup
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"strings"
+
+	"github.com/goodrain/rainbond/db/model"
+	"github.com/jinzhu/gorm"
+	"k8s.io/apimachinery/pkg/util/validation"
+)
+
+// ErrNodeJobNotPrepared denotes absence of a durable node executor intent.
+var ErrNodeJobNotPrepared = errors.New("node job intent is not prepared")
+
+// NodeJobIntent is derived by the trusted scheduler from the saved scan and
+// observed node/storage binding; it does not accept a caller filesystem path.
+type NodeJobIntent struct {
+	Namespace   string `json:"namespace"`
+	Name        string `json:"name"`
+	SpecHash    string `json:"spec_hash"`
+	NodeName    string `json:"node_name"`
+	NodeUID     string `json:"node_uid"`
+	Entry       string `json:"entry"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// NodeJobBinding records the immutable intent and observed executor identities.
+type NodeJobBinding struct {
+	Protocol int `json:"protocol"`
+	NodeJobIntent
+	JobUID  string `json:"job_uid"`
+	PodName string `json:"pod_name"`
+	PodUID  string `json:"pod_uid"`
+}
+
+func nodeJobName(r CoordinationRequest) string {
+	sum := sha256.Sum256([]byte(r.StorageID + "\x00" + r.Generation + "\x00" + r.OperationID))
+	return "rainbond-node-clean-" + hex.EncodeToString(sum[:16])
+}
+func nodeJobScope(intent NodeJobIntent) string {
+	sum := sha256.Sum256([]byte(intent.Entry))
+	return "managed-cache/" + hex.EncodeToString(sum[:])
+}
+func nodeJobTarget(intent NodeJobIntent) string {
+	sum := sha256.Sum256([]byte(intent.NodeUID + "\x00" + intent.Entry + "\x00" + intent.Fingerprint))
+	return "managed-cache:" + hex.EncodeToString(sum[:])
+}
+func validNodeJobIntent(r CoordinationRequest, intent NodeJobIntent) bool {
+	if !r.valid() || r.Kind != "delete" || r.Scope != nodeJobScope(intent) || r.Target != nodeJobTarget(intent) || len(validation.IsDNS1123Label(intent.Namespace)) != 0 || intent.Name != nodeJobName(r) || len(validation.IsDNS1123Subdomain(intent.NodeName)) != 0 || !coordinationIdentity.MatchString(intent.NodeUID) || intent.Entry == "" || len(intent.Entry) > 255 || intent.Entry == "." || intent.Entry == ".." || strings.ContainsAny(intent.Entry, "/\\\x00\r\n") {
+		return false
+	}
+	for _, hash := range []string{intent.SpecHash, intent.Fingerprint} {
+		decoded, err := hex.DecodeString(hash)
+		if err != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != hash {
+			return false
+		}
+	}
+	return true
+}
+func readNodeBinding(r CoordinationRequest, op model.CleanupOperation) (NodeJobBinding, error) {
+	var binding NodeJobBinding
+	if op.NodeExecutionJSON == "" {
+		return binding, ErrNodeJobNotPrepared
+	}
+	if len(op.NodeExecutionJSON) > 8192 || json.Unmarshal([]byte(op.NodeExecutionJSON), &binding) != nil || binding.Protocol != 1 || !validNodeJobIntent(r, binding.NodeJobIntent) || (binding.JobUID != "" && !coordinationIdentity.MatchString(binding.JobUID)) {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	if (binding.PodName != "" || binding.PodUID != "") && (binding.JobUID == "" || len(validation.IsDNS1123Subdomain(binding.PodName)) != 0 || !coordinationIdentity.MatchString(binding.PodUID)) {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	return binding, nil
+}
+func changeNodeJob(database *gorm.DB, r CoordinationRequest, change func(*gorm.DB, model.CleanupStorage, model.CleanupOperation) error) error {
+	if !r.valid() || r.Kind != "delete" {
+		return ErrCoordinationChanged
+	}
+	tx := database.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer tx.Rollback()
+	store, err := lockCleanupStorage(tx, r)
+	if err != nil {
+		return err
+	}
+	binding, err := StorageBinding(tx, r.StorageID, r.Generation)
+	if err != nil {
+		return err
+	}
+	expected := sha256.Sum256([]byte("managed-build-cache\x00" + binding.VolumeUID))
+	if binding.RootPath != "/cache/build" || binding.StorageID != hex.EncodeToString(expected[:]) {
+		return ErrCoordinationChanged
+	}
+	var op model.CleanupOperation
+	if err := tx.Where("operation_id = ?", r.OperationID).First(&op).Error; err != nil {
+		return err
+	}
+	if !r.matches(op) || op.ExternalKey != nil || op.ParentOperationID != "" || hasGCJobBinding(&op) {
+		return ErrCoordinationChanged
+	}
+	if err := change(tx, store, op); err != nil {
+		return err
+	}
+	return tx.Commit().Error
+}
+
+// PrepareNodeJob grants one creation attempt only after committing its intent.
+// Lost responses must be reconciled; an existing intent never grants recreation.
+func PrepareNodeJob(database *gorm.DB, r CoordinationRequest, intent NodeJobIntent) (NodeJobIntent, bool, error) {
+	if intent.Name != "" && intent.Name != nodeJobName(r) {
+		return NodeJobIntent{}, false, ErrCoordinationChanged
+	}
+	intent.Name = nodeJobName(r)
+	if !validNodeJobIntent(r, intent) {
+		return NodeJobIntent{}, false, ErrCoordinationChanged
+	}
+	created := false
+	err := changeNodeJob(database, r, func(tx *gorm.DB, store model.CleanupStorage, op model.CleanupOperation) error {
+		if op.NodeExecutionJSON != "" {
+			previous, err := readNodeBinding(r, op)
+			if err != nil {
+				return err
+			}
+			if previous.NodeJobIntent != intent {
+				return ErrCoordinationChanged
+			}
+			return nil
+		}
+		if store.Mode != "ready" || op.State != "active" {
+			return ErrCoordinationBusy
+		}
+		raw, err := json.Marshal(NodeJobBinding{Protocol: 1, NodeJobIntent: intent})
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&model.CleanupOperation{}).Where("operation_id = ?", r.OperationID).UpdateColumn("node_execution_json", string(raw)).Error; err != nil {
+			return err
+		}
+		created = true
+		return advanceCleanupRevision(tx, store)
+	})
+	if err != nil {
+		return NodeJobIntent{}, false, err
+	}
+	return intent, created, nil
+}
+
+// BindNodeJob accepts only the original observed Job UID after spec verification.
+func BindNodeJob(database *gorm.DB, r CoordinationRequest, intent NodeJobIntent, jobUID string) error {
+	if !validNodeJobIntent(r, intent) || !coordinationIdentity.MatchString(jobUID) {
+		return ErrCoordinationChanged
+	}
+	return changeNodeJob(database, r, func(tx *gorm.DB, store model.CleanupStorage, op model.CleanupOperation) error {
+		previous, err := readNodeBinding(r, op)
+		if err != nil {
+			return err
+		}
+		if previous.NodeJobIntent != intent {
+			return ErrCoordinationChanged
+		}
+		if previous.JobUID != "" {
+			if previous.JobUID != jobUID {
+				return ErrCoordinationChanged
+			}
+			return nil
+		}
+		if store.Mode != "ready" || op.State != "active" {
+			return ErrCoordinationBusy
+		}
+		previous.JobUID = jobUID
+		raw, err := json.Marshal(previous)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&model.CleanupOperation{}).Where("operation_id = ?", r.OperationID).UpdateColumn("node_execution_json", string(raw)).Error; err != nil {
+			return err
+		}
+		return advanceCleanupRevision(tx, store)
+	})
+}
+
+// ReadNodeJobBinding reads original executor identity without granting work.
+func ReadNodeJobBinding(database *gorm.DB, r CoordinationRequest) (NodeJobBinding, error) {
+	if !r.valid() || r.Kind != "delete" {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	var op model.CleanupOperation
+	if err := database.Where("operation_id = ?", r.OperationID).First(&op).Error; err != nil {
+		return NodeJobBinding{}, err
+	}
+	if !r.matches(op) {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	return readNodeBinding(r, op)
+}

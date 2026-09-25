@@ -1226,6 +1226,27 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-job-intent",
+      "title": "Persist immutable node execution identity before job creation",
+      "title_zh": "Persist immutable node execution identity before job creation",
+      "interface_type": "workflow",
+      "interface": "PrepareNodeJob",
+      "code_paths": [
+        "pkg/cleanup/node_job.go",
+        "pkg/cleanup/coordination.go",
+        "pkg/cleanup/deletion_attempt.go",
+        "db/model/cleanup_coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_job_test.go",
+          "selector": "TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.participant-replacement",
       "title": "Participant replacement preserves active deletion protection",
       "title_zh": "Participant replacement preserves active deletion protection",

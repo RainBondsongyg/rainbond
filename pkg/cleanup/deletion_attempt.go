@@ -25,7 +25,7 @@ func changeDeletionAttempt(database *gorm.DB, r CoordinationRequest, observation
 	if err := tx.Where("operation_id = ?", r.OperationID).First(&op).Error; err != nil {
 		return err
 	}
-	if !r.matches(op) {
+	if !r.matches(op) || op.NodeExecutionJSON != "" {
 		return ErrCoordinationChanged
 	}
 	if op.State == "uncertain" {

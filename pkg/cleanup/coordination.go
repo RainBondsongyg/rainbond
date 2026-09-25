@@ -183,6 +183,9 @@ func FinishOperation(database *gorm.DB, r CoordinationRequest, confirmed bool) e
 	if !r.matches(op) {
 		return ErrCoordinationChanged
 	}
+	if op.NodeExecutionJSON != "" {
+		return ErrCoordinationChanged
+	}
 	if confirmed && (op.ExternalKey != nil || op.ParentOperationID != "") {
 		return ErrCoordinationChanged
 	}

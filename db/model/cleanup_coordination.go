@@ -23,6 +23,7 @@ func (CleanupStorage) TableName() string { return "cleanup_storage" }
 // CleanupOperation has no lease expiry. Uncertain operations remain protective
 // across process restarts until explicit reconciliation proves a safe outcome.
 type CleanupOperation struct {
+	NodeExecutionJSON string  `gorm:"type:text"`
 	GCJobNamespace    string  `gorm:"type:varchar(63);not null;default:''"`
 	GCJobName         string  `gorm:"type:varchar(63);not null;default:''"`
 	GCJobSpecHash     string  `gorm:"type:varchar(64);not null;default:''"`
