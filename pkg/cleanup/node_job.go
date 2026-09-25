@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/goodrain/rainbond/db/model"
 	"github.com/jinzhu/gorm"
@@ -29,7 +30,9 @@ type NodeJobIntent struct {
 
 // NodeJobBinding records the immutable intent and observed executor identities.
 type NodeJobBinding struct {
-	Protocol int `json:"protocol"`
+	Result     *NodeExecutionResult `json:"result,omitempty"`
+	FinishedAt *time.Time           `json:"finished_at,omitempty"`
+	Protocol   int                  `json:"protocol"`
 	NodeJobIntent
 	ContainerID string `json:"container_id"`
 	ImageID     string `json:"image_id"`
@@ -71,6 +74,12 @@ func readNodeBinding(r CoordinationRequest, op model.CleanupOperation) (NodeJobB
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
 	if (binding.PodName != "" || binding.PodUID != "" || binding.ContainerID != "" || binding.ImageID != "") && (binding.JobUID == "" || len(validation.IsDNS1123Subdomain(binding.PodName)) != 0 || !coordinationIdentity.MatchString(binding.PodUID) || binding.ContainerID == "" || len(binding.ContainerID) > 256 || binding.ImageID == "" || len(binding.ImageID) > 512) {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	if binding.Result != nil && !validNodeResult(*binding.Result) {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	if binding.FinishedAt != nil && (binding.FinishedAt.IsZero() || binding.PodUID == "" || binding.Result == nil) {
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
 	return binding, nil

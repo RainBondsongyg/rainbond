@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	coordination "github.com/goodrain/rainbond/pkg/cleanup"
 	batchv1 "k8s.io/api/batch/v1"
@@ -115,5 +116,9 @@ func inspectNodeExecutor(ctx context.Context, client kubernetes.Interface, job *
 	if terminal && running {
 		return denied, ErrExecutorRunning
 	}
-	return coordination.NodeExecutorIdentity{Namespace: job.Namespace, JobName: job.Name, JobUID: string(job.UID), PodName: podName, PodUID: podUID, NodeName: spec.NodeName, NodeUID: string(node.UID), VolumeUID: observed.VolumeUID, SpecHash: execution.SpecHash, ContainerID: status.ContainerID, ImageID: container.Image}, nil
+	var finishedAt time.Time
+	if terminal {
+		finishedAt = status.State.Terminated.FinishedAt.Time
+	}
+	return coordination.NodeExecutorIdentity{FinishedAt: finishedAt, Namespace: job.Namespace, JobName: job.Name, JobUID: string(job.UID), PodName: podName, PodUID: podUID, NodeName: spec.NodeName, NodeUID: string(node.UID), VolumeUID: observed.VolumeUID, SpecHash: execution.SpecHash, ContainerID: status.ContainerID, ImageID: container.Image}, nil
 }

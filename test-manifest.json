@@ -1311,6 +1311,34 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-result-finalization",
+      "title": "Finalize known original node results only after verified executor exit",
+      "title_zh": "Finalize known original node results only after verified executor exit",
+      "interface_type": "view_endpoint",
+      "interface": "POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish",
+      "code_paths": [
+        "pkg/cleanup/node_result.go",
+        "api/controller/cleanup_node_executor.go",
+        "pkg/cleanup/node_executor_client.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_result_test.go",
+          "selector": "TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor"
+        },
+        {
+          "path": "pkg/cleanup/node_result_test.go",
+          "selector": "TestNodeResultRejectsInvalidFilesystemEvidence"
+        },
+        {
+          "path": "api/controller/cleanup_node_executor_test.go",
+          "selector": "TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.participant-replacement",
       "title": "Participant replacement preserves active deletion protection",
       "title_zh": "Participant replacement preserves active deletion protection",

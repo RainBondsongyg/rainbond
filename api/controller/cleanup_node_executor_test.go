@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/goodrain/rainbond/api/middleware"
@@ -19,6 +20,7 @@ import (
 )
 
 // capability_id: rainbond.cleanup.node-executor-admission
+// capability_id: rainbond.cleanup.node-result-finalization
 func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "node.db"))
 	if err != nil {
@@ -72,6 +74,9 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(middleware.FullToken)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job", h.EnterNodeJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/result", h.RecordNodeJobResult)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish", h.FinishNodeJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/status", h.NodeJobProgress)
 	endpoint := "/v2/cleanup/stores/" + r.StorageID + "/operations/" + r.OperationID + "/node/enter-job"
 	unauth := httptest.NewRecorder()
 	router.ServeHTTP(unauth, httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`)))
@@ -103,4 +108,36 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	if err := client.EnterNodeJob(context.Background(), r, locator); err == nil {
 		t.Fatal("execution grant repeated")
 	}
+	before := guard.NodeStorageMeasurement{RootDevice: 1, RootInode: 2, TotalBytes: 1000, FreeBytes: 100, AvailableBytes: 80, TotalInodes: 100, FreeInodes: 20, ObservedAt: time.Now().UTC()}
+	after := before
+	after.FreeBytes = 120
+	after.AvailableBytes = 100
+	after.ObservedAt = after.ObservedAt.Add(time.Second)
+	result := guard.NodeExecutionResult{State: "deleted", Before: &before, After: &after}
+	if err := client.RecordNodeJobResult(context.Background(), r, locator, result); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.FinishNodeJob(context.Background(), r, locator); err == nil {
+		t.Fatal("running helper released scope")
+	}
+	pod.Status.Phase = corev1.PodSucceeded
+	pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(after.ObservedAt.Add(time.Second)), ExitCode: 0}}
+	if _, err := kube.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.FinishNodeJob(context.Background(), r, locator); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := client.NodeJobProgress(context.Background(), r)
+	if err != nil || progress.State != "finished" || progress.Outcome != "deleted" || progress.Execution.Result.After.AvailableBytes != 100 {
+		t.Fatal(progress, err)
+	}
+	kube.CoreV1().Pods("system").Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+	if err := client.RecordNodeJobResult(context.Background(), r, locator, result); err != nil {
+		t.Fatal("lost result acknowledgment failed after pod removal", err)
+	}
+	if err := client.FinishNodeJob(context.Background(), r, locator); err != nil {
+		t.Fatal("lost finish acknowledgment failed after pod removal", err)
+	}
+
 }

@@ -72,6 +72,7 @@
 | rainbond.cleanup.node-job-intent | Persist immutable node execution identity before job creation | active | integration | PrepareNodeJob | pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation |
 | rainbond.cleanup.node-job-start | Start only the original protected node cleanup Job | active | integration | StartNodeJob | pkg/cleanup/node_job_start_test.go::TestNodeJobStartChecksProtectionAndReconcilesLostReply |
 | rainbond.cleanup.node-job-submission | Submit one suspended node cleanup Job and reconcile original identity | active | integration | SubmitSuspendedNodeJob | pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating |
+| rainbond.cleanup.node-result-finalization | Finalize known original node results only after verified executor exit | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish | pkg/cleanup/node_result_test.go::TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor<br>pkg/cleanup/node_result_test.go::TestNodeResultRejectsInvalidFilesystemEvidence<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
 | rainbond.cleanup.participant-replacement | Participant replacement preserves active deletion protection | active | regression | cleanup.RegisterParticipant | pkg/cleanup/participant_test.go::TestParticipantReplacementWithdrawsReadinessWithoutLosingDeletion |
 | rainbond.cleanup.pending-import-references | Include retained tar import and check receipts in reference audits | active | regression | cleanup.collectRegionReferenceImages | pkg/cleanup/reference_import_test.go::TestImportedImagesRemainReferencedUntilTheirRecordsAreReleased<br>pkg/cleanup/reference_import_test.go::TestIncompleteImportRecordsCannotProveAbsence<br>pkg/cleanup/reference_import_test.go::TestRejectedAndNonImageChecksDoNotInventReferences |
 | rainbond.cleanup.plugin-version-reference-coordination | Plugin version writes respect selected deletion and cannot resurrect records | active | regression | PluginBuildVersionDaoImpl | db/mysql/dao/version_cleanup_test.go::TestPluginVersionWritesRespectDeletionAndNeverResurrect |
@@ -1238,6 +1239,16 @@
 - 业务入口: `SubmitSuspendedNodeJob`
 - 代码路径: `pkg/cleanup/node_job_submit.go`
 - 测试路径: `pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating`
+
+### Finalize known original node results only after verified executor exit
+
+- Capability ID: `rainbond.cleanup.node-result-finalization`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish`
+- 代码路径: `pkg/cleanup/node_result.go`, `api/controller/cleanup_node_executor.go`, `pkg/cleanup/node_executor_client.go`
+- 测试路径: `pkg/cleanup/node_result_test.go::TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor`, `pkg/cleanup/node_result_test.go::TestNodeResultRejectsInvalidFilesystemEvidence`, `api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce`
 
 ### Participant replacement preserves active deletion protection
 

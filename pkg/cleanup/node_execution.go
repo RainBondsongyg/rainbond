@@ -3,6 +3,7 @@ package cleanup
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/goodrain/rainbond/db/model"
 	"github.com/jinzhu/gorm"
@@ -12,6 +13,7 @@ import (
 // NodeExecutorIdentity is produced by the trusted Kubernetes inspector. HTTP
 // handlers must inspect live objects, never decode these facts from a caller.
 type NodeExecutorIdentity struct {
+	FinishedAt                                  time.Time
 	Namespace, JobName, JobUID, PodName, PodUID string
 	NodeName, NodeUID, VolumeUID, SpecHash      string
 	ContainerID, ImageID                        string
@@ -20,7 +22,7 @@ type NodeExecutorIdentity struct {
 // EnterNodeExecution consumes the original Pod's only native execution grant.
 // A lost acknowledgment is never permission to reissue native deletion.
 func EnterNodeExecution(database *gorm.DB, r CoordinationRequest, observed NodeExecutorIdentity) error {
-	if !coordinationIdentity.MatchString(observed.PodUID) || len(validation.IsDNS1123Subdomain(observed.PodName)) != 0 || observed.ContainerID == "" || len(observed.ContainerID) > 256 || observed.ImageID == "" || len(observed.ImageID) > 512 || strings.ContainsAny(observed.ContainerID+observed.ImageID, "\x00\r\n") {
+	if !observed.FinishedAt.IsZero() || !coordinationIdentity.MatchString(observed.PodUID) || len(validation.IsDNS1123Subdomain(observed.PodName)) != 0 || observed.ContainerID == "" || len(observed.ContainerID) > 256 || observed.ImageID == "" || len(observed.ImageID) > 512 || strings.ContainsAny(observed.ContainerID+observed.ImageID, "\x00\r\n") {
 		return ErrCoordinationChanged
 	}
 	return changeNodeJob(database, r, func(tx *gorm.DB, store model.CleanupStorage, op model.CleanupOperation) error {

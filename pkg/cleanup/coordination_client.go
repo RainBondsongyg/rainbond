@@ -52,6 +52,7 @@ func NewCoordinationClient(endpoint, token string, allowHTTP bool, transports ..
 type coordinationResponse struct {
 	Msg  string `json:"msg"`
 	Bean struct {
+		NodeJob           *NodeJobProgress     `json:"node_job"`
 		GCJob             *GCJobProgress       `json:"gc_job"`
 		Protocol          int                  `json:"protocol"`
 		NewlyAdmitted     *bool                `json:"newly_admitted"`
