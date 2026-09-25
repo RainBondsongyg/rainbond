@@ -68,7 +68,13 @@ func (c *VersionInfoDaoImpl) AddModel(mo model.Interface) error {
 			return err
 		}
 		result.ActivationRevision = revision
-		return tx.Create(result).Error
+		if err := tx.Create(result).Error; err != nil {
+			return err
+		}
+		if result.FinalStatus == "success" {
+			return cleanupguard.TransferImportedReferencesToVersions(tx)
+		}
+		return nil
 	})
 }
 
@@ -112,6 +118,9 @@ func (c *VersionInfoDaoImpl) UpdateModel(mo model.Interface) error {
 			if count == 0 {
 				return gorm.ErrRecordNotFound
 			}
+		}
+		if result.FinalStatus == "success" {
+			return cleanupguard.TransferImportedReferencesToVersions(tx)
 		}
 		return nil
 	})

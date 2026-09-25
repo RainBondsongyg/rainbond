@@ -23,7 +23,7 @@ func TestVersionWritesWithoutEnrolledCleanupStorage(t *testing.T) {
 	}
 	defer database.Close()
 	database.LogMode(false)
-	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}).Error; err != nil {
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.KeyValue{}, &model.VersionInfo{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	versions := &VersionInfoDaoImpl{DB: database}
@@ -31,9 +31,20 @@ func TestVersionWritesWithoutEnrolledCleanupStorage(t *testing.T) {
 	if err := versions.AddModel(record); err != nil {
 		t.Fatal("ordinary build cannot create its version", err)
 	}
+	receipt := model.KeyValue{K: "/rainbond/tarload/owned", V: `{"status":"success","target_images":{"source":"goodrain.me/team/component:v1"}}`}
+	if err := database.Create(&receipt).Error; err != nil {
+		t.Fatal(err)
+	}
 	record.FinalStatus = "success"
 	if err := versions.UpdateModel(record); err != nil {
 		t.Fatal("ordinary build cannot finish its version", err)
+	}
+	var transferred model.KeyValue
+	if err := database.Where("k = ?", receipt.K).First(&transferred).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(transferred.V, "cleanup_version_handoff") {
+		t.Fatal("successful version did not take ownership of import references")
 	}
 	var stored model.VersionInfo
 	if err := database.First(&stored, record.ID).Error; err != nil || stored.FinalStatus != "success" || stored.ActivationRevision == "" {
@@ -146,7 +157,7 @@ func TestAdmittedBuildVersionPersistsDuringGCDrain(t *testing.T) {
 	}
 	defer database.Close()
 	database.LogMode(false)
-	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}).Error; err != nil {
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.KeyValue{}, &model.VersionInfo{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Create(&model.CleanupStorage{StorageID: "owned", Generation: "one", Mode: "ready"}).Error; err != nil {

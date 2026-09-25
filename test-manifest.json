@@ -1103,6 +1103,26 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.import_reference_handoff",
+      "title": "Atomically hand import references to successful versions",
+      "title_zh": "Atomically hand import references to successful versions",
+      "interface_type": "workflow",
+      "interface": "TransferImportedReferencesToVersions",
+      "code_paths": [
+        "pkg/cleanup/reference_handoff.go",
+        "pkg/cleanup/reference_import.go",
+        "db/mysql/dao/version.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/reference_handoff_test.go",
+          "selector": "TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.manual-gc-maintenance",
       "title": "Drain writes and require confirmed restoration around manual GC",
       "title_zh": "Drain writes and require confirmed restoration around manual GC",

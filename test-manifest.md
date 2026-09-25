@@ -62,6 +62,7 @@
 | rainbond.cleanup.gc-job-submission | Persist GC submission and reconcile without replay | active | regression | cleanup.SubmitSuspendedGCJob | pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionPersistsBeforeCreateAndReconcilesLostResponse<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionRejectsUnsafeRetrySettings<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionDefaultingAndMutation<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionCanceledAndDryRunFailureLeaveNoIntent |
 | rainbond.cleanup.gc-job-template | Derive GC Job from verified Registry storage and credential references | active | regression | kubeidentity.BuildRegistryGCJob | pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateUsesObservedStorageAndMountedCredentials<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobTemplateRejectsUnsafeSource |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
+| rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
 | rainbond.cleanup.market-slug-task-completion | Market slug task waits for completion before returning | active | regression | exectorManager.buildFromMarketSlug | builder/exector/cleanup_task_boundary_test.go::TestMarketSlugTaskWaitsForCompletion |
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
@@ -1131,6 +1132,16 @@
 - 业务入口: `cleanup.TrackServiceActivation`
 - 代码路径: `pkg/cleanup/activation.go`
 - 测试路径: `pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave`
+
+### Atomically hand import references to successful versions
+
+- Capability ID: `rainbond.cleanup.import_reference_handoff`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `TransferImportedReferencesToVersions`
+- 代码路径: `pkg/cleanup/reference_handoff.go`, `pkg/cleanup/reference_import.go`, `db/mysql/dao/version.go`
+- 测试路径: `pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack`
 
 ### Drain writes and require confirmed restoration around manual GC
 

@@ -38,6 +38,19 @@ func inspectImportReferences(tx *gorm.DB, inspect func(string)) (bool, error) {
 }
 
 func inspectImportReceipt(key, value string, inspect func(string)) bool {
+	var marker struct {
+		Handoff string `json:"cleanup_version_handoff"`
+	}
+	if json.Unmarshal([]byte(value), &marker) == nil && marker.Handoff != "" {
+		_, fingerprint, valid := importReceiptImages(key, value)
+		if valid && marker.Handoff == fingerprint {
+			return true
+		}
+	}
+	return inspectPendingImportReceipt(key, value, inspect)
+}
+
+func inspectPendingImportReceipt(key, value string, inspect func(string)) bool {
 	if strings.HasPrefix(key, "/rainbond/tarload/") {
 		var record struct {
 			Status  string            `json:"status"`
