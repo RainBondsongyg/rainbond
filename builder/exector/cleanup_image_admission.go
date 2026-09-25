@@ -19,7 +19,7 @@ type nativeBuildAdmission struct {
 // Admission precedes any native image work. Retries of an existing task do not
 // receive another execution grant. Unknown outcomes stay protective.
 func admitBuild(database *gorm.DB, kind, taskID string, body []byte) (*nativeBuildAdmission, error) {
-	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile" && kind != "tar-image") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
+	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile" && kind != "tar-image" && kind != "service-check") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
 		return nil, guard.ErrCoordinationChanged
 	}
 	stores, err := guard.DiscoverStores(database)
@@ -86,11 +86,15 @@ func (a *nativeBuildAdmission) savePluginVersion(version *model.TenantPluginBuil
 	})
 }
 
-func runTarImageWithAdmission(database *gorm.DB, loadID string, body []byte, run func(*nativeBuildAdmission) bool) (err error) {
+func runTarImageWithAdmission(database *gorm.DB, loadID string, body []byte, run func(*nativeBuildAdmission) bool) error {
+	return runNativeBuildWithAdmission(database, "tar-image", loadID, body, run)
+}
+
+func runNativeBuildWithAdmission(database *gorm.DB, kind, id string, body []byte, run func(*nativeBuildAdmission) bool) (err error) {
 	if run == nil {
 		return guard.ErrCoordinationChanged
 	}
-	admission, err := admitBuild(database, "tar-image", loadID, body)
+	admission, err := admitBuild(database, kind, id, body)
 	if err != nil {
 		return err
 	}
@@ -108,4 +112,11 @@ func (a *nativeBuildAdmission) saveTarImageResult(loadID, result string) error {
 	return a.write(func(tx *gorm.DB) error {
 		return tx.Create(&model.KeyValue{K: "/rainbond/tarload/" + loadID, V: result}).Error
 	})
+}
+
+func (a *nativeBuildAdmission) saveServiceCheckResult(id, result string) error {
+	if a == nil {
+		return db.GetManager().KeyValueDao().Put("/servicecheck/"+id, result)
+	}
+	return a.write(func(tx *gorm.DB) error { return tx.Create(&model.KeyValue{K: "/servicecheck/" + id, V: result}).Error })
 }

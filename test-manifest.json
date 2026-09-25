@@ -1428,6 +1428,25 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.tar-check-event-path",
+      "title": "Restrict tar check input to event directory identifiers",
+      "title_zh": "Restrict tar check input to event directory identifiers",
+      "interface_type": "workflow",
+      "interface": "parser.TarImageEventID",
+      "code_paths": [
+        "builder/parser/tar_event.go",
+        "builder/parser/docker_run.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/parser/tar_event_test.go",
+          "selector": "TestTarImageEventIDRejectsTraversalAndMalformedSources"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.tar-image-admission",
       "title": "Fence tar image import through native work and result persistence",
       "title_zh": "Fence tar image import through native work and result persistence",
@@ -1485,6 +1504,25 @@
         {
           "path": "builder/exector/cleanup_tar_admission_test.go",
           "selector": "TestTarImportRedeliveryDoesNotPublishFailureOverActiveWork"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.tar-service-check-admission",
+      "title": "Block tar service check native work during maintenance",
+      "title_zh": "Block tar service check native work during maintenance",
+      "interface_type": "workflow",
+      "interface": "exector.serviceCheck",
+      "code_paths": [
+        "builder/exector/service_check.go",
+        "builder/exector/cleanup_image_admission.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_service_check_test.go",
+          "selector": "TestTarServiceCheckCannotPushDuringMaintenance"
         }
       ],
       "test_type": "regression",

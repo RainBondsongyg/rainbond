@@ -80,9 +80,11 @@
 | rainbond.cleanup.single-deletion-attempt | Consume deletion permission once and retain verification protection | active | regression | pkg/cleanup.BeginDeletionAttempt | pkg/cleanup/deletion_attempt_test.go::TestDeletionAttemptIsConsumedOnceAndRemainsProtectedUntilVerified |
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
 | rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
+| rainbond.cleanup.tar-check-event-path | Restrict tar check input to event directory identifiers | active | regression | parser.TarImageEventID | builder/parser/tar_event_test.go::TestTarImageEventIDRejectsTraversalAndMalformedSources |
 | rainbond.cleanup.tar-image-admission | Fence tar image import through native work and result persistence | active | regression | exector.loadTarImage | builder/exector/cleanup_tar_admission_test.go::TestTarImportAdmissionCoversWorkAndResultPersistence<br>builder/exector/cleanup_tar_admission_test.go::TestTarImportUnknownOutcomeRetainsProtection<br>builder/exector/cleanup_tar_admission_test.go::TestTarImportInvalidIdentityStopsBeforeFilesystemOrDatabase |
 | rainbond.cleanup.tar-image-entry | Reject tar import before native work and preserve original result | active | regression | exector.loadTarImage | builder/exector/cleanup_tar_admission_test.go::TestTarImportEntryReportsMaintenanceWithoutStartingNativeWork |
 | rainbond.cleanup.tar-image-redelivery | Do not overwrite a running tar import on duplicate delivery | active | regression | exector.loadTarImage | builder/exector/cleanup_tar_admission_test.go::TestTarImportRedeliveryDoesNotPublishFailureOverActiveWork |
+| rainbond.cleanup.tar-service-check-admission | Block tar service check native work during maintenance | active | regression | exector.serviceCheck | builder/exector/cleanup_service_check_test.go::TestTarServiceCheckCannotPushDuringMaintenance |
 | rainbond.cleanup.verified-storage-measurement | Measure only the verified registry backing filesystem | active | regression | registryproxy.MeasureStorage | pkg/cleanup/registryproxy/measurement_test.go::TestMeasurementRequiresBoundStorageAndRejectsSymlinks<br>cmd/registry-coordinator/main_test.go::TestMeasurementModeDoesNotInitializeOrNeedCredentials |
 | rainbond.cleanup.version-activation-fence | Fence upgrade and rollback against version retirement | active | regression | OperationHandler.upgrade and ServiceAction.RollBack | api/handler/cleanup_rollback_test.go::TestLegacyRollbackCannotActivateRetiredVersion<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeRechecksVersionUnderRetirementLock<br>api/handler/cleanup_rollback_test.go::TestUpgradeQueueFailureCannotOverwriteNewerDeployment<br>api/handler/cleanup_rollback_test.go::TestLegacyRollbackRejectsWrongTenant<br>api/handler/cleanup_rollback_test.go::TestExplicitUpgradeEnqueuesValidatedVersion |
 | rainbond.cleanup.version-reference-coordination | Version writes serialize with manifest deletion | active | regression | VersionInfoDaoImpl | db/mysql/dao/version_cleanup_test.go::TestVersionCreationCannotRaceManifestDeletion |
@@ -1306,6 +1308,16 @@
 - 代码路径: `pkg/cleanup/registryproxy/identity.go`
 - 测试路径: `pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten`
 
+### Restrict tar check input to event directory identifiers
+
+- Capability ID: `rainbond.cleanup.tar-check-event-path`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `parser.TarImageEventID`
+- 代码路径: `builder/parser/tar_event.go`, `builder/parser/docker_run.go`
+- 测试路径: `builder/parser/tar_event_test.go::TestTarImageEventIDRejectsTraversalAndMalformedSources`
+
 ### Fence tar image import through native work and result persistence
 
 - Capability ID: `rainbond.cleanup.tar-image-admission`
@@ -1335,6 +1347,16 @@
 - 业务入口: `exector.loadTarImage`
 - 代码路径: `builder/exector/tar_image_load.go`
 - 测试路径: `builder/exector/cleanup_tar_admission_test.go::TestTarImportRedeliveryDoesNotPublishFailureOverActiveWork`
+
+### Block tar service check native work during maintenance
+
+- Capability ID: `rainbond.cleanup.tar-service-check-admission`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `exector.serviceCheck`
+- 代码路径: `builder/exector/service_check.go`, `builder/exector/cleanup_image_admission.go`
+- 测试路径: `builder/exector/cleanup_service_check_test.go::TestTarServiceCheckCannotPushDuringMaintenance`
 
 ### Measure only the verified registry backing filesystem
 
