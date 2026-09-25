@@ -1428,6 +1428,69 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.tar-image-admission",
+      "title": "Fence tar image import through native work and result persistence",
+      "title_zh": "Fence tar image import through native work and result persistence",
+      "interface_type": "workflow",
+      "interface": "exector.loadTarImage",
+      "code_paths": [
+        "builder/exector/tar_image_load.go",
+        "builder/exector/cleanup_image_admission.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_tar_admission_test.go",
+          "selector": "TestTarImportAdmissionCoversWorkAndResultPersistence"
+        },
+        {
+          "path": "builder/exector/cleanup_tar_admission_test.go",
+          "selector": "TestTarImportUnknownOutcomeRetainsProtection"
+        },
+        {
+          "path": "builder/exector/cleanup_tar_admission_test.go",
+          "selector": "TestTarImportInvalidIdentityStopsBeforeFilesystemOrDatabase"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.tar-image-entry",
+      "title": "Reject tar import before native work and preserve original result",
+      "title_zh": "Reject tar import before native work and preserve original result",
+      "interface_type": "workflow",
+      "interface": "exector.loadTarImage",
+      "code_paths": [
+        "builder/exector/tar_image_load.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_tar_admission_test.go",
+          "selector": "TestTarImportEntryReportsMaintenanceWithoutStartingNativeWork"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.tar-image-redelivery",
+      "title": "Do not overwrite a running tar import on duplicate delivery",
+      "title_zh": "Do not overwrite a running tar import on duplicate delivery",
+      "interface_type": "workflow",
+      "interface": "exector.loadTarImage",
+      "code_paths": [
+        "builder/exector/tar_image_load.go"
+      ],
+      "tests": [
+        {
+          "path": "builder/exector/cleanup_tar_admission_test.go",
+          "selector": "TestTarImportRedeliveryDoesNotPublishFailureOverActiveWork"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.verified-storage-measurement",
       "title": "Measure only the verified registry backing filesystem",
       "title_zh": "Measure only the verified registry backing filesystem",

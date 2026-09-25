@@ -19,7 +19,7 @@ type nativeBuildAdmission struct {
 // Admission precedes any native image work. Retries of an existing task do not
 // receive another execution grant. Unknown outcomes stay protective.
 func admitBuild(database *gorm.DB, kind, taskID string, body []byte) (*nativeBuildAdmission, error) {
-	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
+	if (kind != "image" && kind != "source" && kind != "vm" && kind != "image-share" && kind != "share-plugin" && kind != "plugin-image" && kind != "plugin-dockerfile" && kind != "tar-image") || database == nil || taskID == "" || len(taskID) > 128 || strings.ContainsAny(taskID, "\x00\r\n") {
 		return nil, guard.ErrCoordinationChanged
 	}
 	stores, err := guard.DiscoverStores(database)
@@ -83,5 +83,29 @@ func (a *nativeBuildAdmission) savePluginVersion(version *model.TenantPluginBuil
 	}
 	return a.write(func(tx *gorm.DB) error {
 		return db.GetManager().TenantPluginBuildVersionDaoTransactions(tx).UpdateModel(version)
+	})
+}
+
+func runTarImageWithAdmission(database *gorm.DB, loadID string, body []byte, run func(*nativeBuildAdmission) bool) (err error) {
+	if run == nil {
+		return guard.ErrCoordinationChanged
+	}
+	admission, err := admitBuild(database, "tar-image", loadID, body)
+	if err != nil {
+		return err
+	}
+	confirmed := false
+	defer func() {
+		if finishErr := admission.finish(confirmed); err == nil {
+			err = finishErr
+		}
+	}()
+	confirmed = run(admission)
+	return nil
+}
+
+func (a *nativeBuildAdmission) saveTarImageResult(loadID, result string) error {
+	return a.write(func(tx *gorm.DB) error {
+		return tx.Create(&model.KeyValue{K: "/rainbond/tarload/" + loadID, V: result}).Error
 	})
 }
