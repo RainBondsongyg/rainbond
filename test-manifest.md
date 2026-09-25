@@ -50,6 +50,9 @@
 | rainbond.cleanup.durable-coordination | Persist coordinated operations across restarts and conflicts | active | regression | pkg/cleanup.AcquireOperation | pkg/cleanup/coordination_test.go::TestPersistentCoordinationConflictsAndRecovery |
 | rainbond.cleanup.durable-gc-receipt | Recover only immutable GC execution evidence without replay | active | regression | registryproxy.RecoverGCReceipt | pkg/cleanup/registryproxy/gc_receipt_test.go::TestGCReceiptIsBoundImmutableAndDoesNotPermitReplay |
 | rainbond.cleanup.durable-maintenance-measurements | Persist GC measurements without releasing maintenance protection | active | regression | cleanup.RecordMaintenanceMeasurement | pkg/cleanup/maintenance_measurement_test.go::TestMaintenanceMeasurementsPersistWithoutGrantingRestore |
+| rainbond.cleanup.gc-executor-command | Bind native GC command to the verified Job admission | active | regression | registry-gc.runGC | cmd/registry-gc/main_test.go::TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery |
+| rainbond.cleanup.gc-executor-identity | Verify GC pod ownership image and physical volume | active | regression | kubeidentity.InspectGCExecutor | pkg/cleanup/kubeidentity/gc_executor_test.go::TestGCExecutorIdentityRejectsUntrustedPodAndStorage |
+| rainbond.cleanup.gc-job-execution-api | Grant verified GC Job execution once after writer drain | active | integration | POST maintenance/enter-job | api/controller/cleanup_gc_executor_test.go::TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce<br>pkg/cleanup/registryproxy/gc_recorder_test.go::TestGCJobRecorderUsesVerifiedGateWithoutFallback |
 | rainbond.cleanup.gc-job-submission | Persist GC submission and reconcile without replay | active | regression | cleanup.SubmitSuspendedGCJob | pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionPersistsBeforeCreateAndReconcilesLostResponse<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionRejectsUnsafeRetrySettings<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionDefaultingAndMutation<br>pkg/cleanup/gc_job_submit_test.go::TestGCSubmissionCanceledAndDryRunFailureLeaveNoIntent |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
@@ -993,6 +996,36 @@
 - 业务入口: `cleanup.RecordMaintenanceMeasurement`
 - 代码路径: `pkg/cleanup/maintenance_measurement.go`, `pkg/cleanup/storage_measurement.go`
 - 测试路径: `pkg/cleanup/maintenance_measurement_test.go::TestMaintenanceMeasurementsPersistWithoutGrantingRestore`
+
+### Bind native GC command to the verified Job admission
+
+- Capability ID: `rainbond.cleanup.gc-executor-command`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `registry-gc.runGC`
+- 代码路径: `cmd/registry-gc/main.go`
+- 测试路径: `cmd/registry-gc/main_test.go::TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery`
+
+### Verify GC pod ownership image and physical volume
+
+- Capability ID: `rainbond.cleanup.gc-executor-identity`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `kubeidentity.InspectGCExecutor`
+- 代码路径: `pkg/cleanup/kubeidentity/gc_executor.go`
+- 测试路径: `pkg/cleanup/kubeidentity/gc_executor_test.go::TestGCExecutorIdentityRejectsUntrustedPodAndStorage`
+
+### Grant verified GC Job execution once after writer drain
+
+- Capability ID: `rainbond.cleanup.gc-job-execution-api`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST maintenance/enter-job`
+- 代码路径: `api/controller/cleanup_gc_executor.go`, `pkg/cleanup/gc_executor_client.go`, `pkg/cleanup/registryproxy/gc_recorder.go`
+- 测试路径: `api/controller/cleanup_gc_executor_test.go::TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce`, `pkg/cleanup/registryproxy/gc_recorder_test.go::TestGCJobRecorderUsesVerifiedGateWithoutFallback`
 
 ### Persist GC submission and reconcile without replay
 

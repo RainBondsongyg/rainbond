@@ -29,6 +29,7 @@ import (
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
 type CleanupCoordinationHandler struct {
+	gcTarget           func() (kubernetes.Interface, string, string, error)
 	database           func() *gorm.DB
 	permitKey          func() []byte
 	inspectRegistry    func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
@@ -37,7 +38,7 @@ type CleanupCoordinationHandler struct {
 
 // NewCleanupCoordinationHandler uses the Region database manager.
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
-	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectParticipant: inspectSystemRegistryParticipant}
+	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectParticipant: inspectSystemRegistryParticipant, gcTarget: systemRegistryInspectionTarget}
 }
 
 // DiscoverStores locates enrolled storage for authenticated platform producers.

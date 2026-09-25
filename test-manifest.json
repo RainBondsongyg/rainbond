@@ -840,6 +840,66 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-executor-command",
+      "title": "Bind native GC command to the verified Job admission",
+      "title_zh": "Bind native GC command to the verified Job admission",
+      "interface_type": "workflow",
+      "interface": "registry-gc.runGC",
+      "code_paths": [
+        "cmd/registry-gc/main.go"
+      ],
+      "tests": [
+        {
+          "path": "cmd/registry-gc/main_test.go",
+          "selector": "TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.gc-executor-identity",
+      "title": "Verify GC pod ownership image and physical volume",
+      "title_zh": "Verify GC pod ownership image and physical volume",
+      "interface_type": "workflow",
+      "interface": "kubeidentity.InspectGCExecutor",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/gc_executor.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_executor_test.go",
+          "selector": "TestGCExecutorIdentityRejectsUntrustedPodAndStorage"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.gc-job-execution-api",
+      "title": "Grant verified GC Job execution once after writer drain",
+      "title_zh": "Grant verified GC Job execution once after writer drain",
+      "interface_type": "view_endpoint",
+      "interface": "POST maintenance/enter-job",
+      "code_paths": [
+        "api/controller/cleanup_gc_executor.go",
+        "pkg/cleanup/gc_executor_client.go",
+        "pkg/cleanup/registryproxy/gc_recorder.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_gc_executor_test.go",
+          "selector": "TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce"
+        },
+        {
+          "path": "pkg/cleanup/registryproxy/gc_recorder_test.go",
+          "selector": "TestGCJobRecorderUsesVerifiedGateWithoutFallback"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-job-submission",
       "title": "Persist GC submission and reconcile without replay",
       "title_zh": "Persist GC submission and reconcile without replay",

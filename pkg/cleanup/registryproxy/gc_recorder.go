@@ -13,6 +13,7 @@ type gcAPIRecorder struct {
 	binding     coordination.StorageRegistration
 	request     coordination.CoordinationRequest
 	fingerprint string
+	executor    *coordination.GCExecutorLocator
 }
 
 // NewGCRecorder binds executor callbacks to one immutable storage and operation.
@@ -36,7 +37,13 @@ func (r *gcAPIRecorder) BeginGC(ctx context.Context, before StorageMeasurement) 
 	if !r.valid(before) {
 		return ErrStorageIdentity
 	}
-	if err := r.client.EnterMaintenance(ctx, r.request); err != nil {
+	var err error
+	if r.executor != nil {
+		err = r.client.EnterGCJob(ctx, r.request, *r.executor)
+	} else {
+		err = r.client.EnterMaintenance(ctx, r.request)
+	}
+	if err != nil {
 		return err
 	}
 	// A lost response leaves maintenance protected; never reacquire admission.
@@ -55,4 +62,19 @@ func (r *gcAPIRecorder) ObserveGC(ctx context.Context, after StorageMeasurement)
 		return ErrStorageIdentity
 	}
 	return r.client.RecordMaintenanceMeasurement(ctx, r.request, "after", after)
+}
+
+// NewGCJobRecorder uses control-plane-verified Kubernetes execution admission.
+// Unlike the legacy recorder, it cannot enter through the generic GC endpoint.
+func NewGCJobRecorder(client *coordination.CoordinationClient, binding coordination.StorageRegistration, request coordination.CoordinationRequest, executor coordination.GCExecutorLocator) (GCExecutionRecorder, error) {
+	if !executor.Valid() {
+		return nil, coordination.ErrCoordinationChanged
+	}
+	recorder, err := NewGCRecorder(client, binding, request)
+	if err != nil {
+		return nil, err
+	}
+	concrete := recorder.(*gcAPIRecorder)
+	concrete.executor = &executor
+	return concrete, nil
 }

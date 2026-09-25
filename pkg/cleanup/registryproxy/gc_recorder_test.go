@@ -59,3 +59,36 @@ func TestGCRecorderRejectsForeignMeasurementsBeforeAdmission(t *testing.T) {
 		t.Fatal("denied admission continued recording", calls)
 	}
 }
+
+func TestGCJobRecorderUsesVerifiedGateWithoutFallback(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v2/cleanup/stores/owned/operations/gc/maintenance/enter-job" {
+			t.Error("used generic admission or continued after rejection", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	client, err := coordination.NewCoordinationClient(server.URL, "isolated-fixture", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := coordination.StorageRegistration{StorageID: "owned", Generation: "one", VolumeUID: "volume", RootPath: "/registry"}
+	request := coordination.CoordinationRequest{StorageID: "owned", Generation: "one", OperationID: "gc", Owner: "executor", Kind: "gc", Scope: "*", Fingerprint: "confirmation"}
+	if _, err := NewGCJobRecorder(client, binding, request, coordination.GCExecutorLocator{}); err == nil {
+		t.Fatal("missing executor accepted")
+	}
+	recorder, err := NewGCJobRecorder(client, binding, request, coordination.GCExecutorLocator{Pod: "job-pod", PodUID: "pod-uid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp, _ := binding.Fingerprint()
+	measured := StorageMeasurement{Protocol: 1, StorageID: "owned", Generation: "one", BindingFingerprint: fp, FilesystemID: "owned-fs", ObservedAt: time.Now(), TotalBytes: 1024, FreeBytes: 512, AvailableBytes: 256}
+	if err := recorder.BeginGC(context.Background(), measured); !errors.Is(err, coordination.ErrCoordinationDenied) {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatal("failed admission replayed", calls)
+	}
+}
