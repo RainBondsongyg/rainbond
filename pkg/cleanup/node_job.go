@@ -31,9 +31,11 @@ type NodeJobIntent struct {
 type NodeJobBinding struct {
 	Protocol int `json:"protocol"`
 	NodeJobIntent
-	JobUID  string `json:"job_uid"`
-	PodName string `json:"pod_name"`
-	PodUID  string `json:"pod_uid"`
+	ContainerID string `json:"container_id"`
+	ImageID     string `json:"image_id"`
+	JobUID      string `json:"job_uid"`
+	PodName     string `json:"pod_name"`
+	PodUID      string `json:"pod_uid"`
 }
 
 func nodeJobName(r CoordinationRequest) string {
@@ -68,7 +70,7 @@ func readNodeBinding(r CoordinationRequest, op model.CleanupOperation) (NodeJobB
 	if len(op.NodeExecutionJSON) > 8192 || json.Unmarshal([]byte(op.NodeExecutionJSON), &binding) != nil || binding.Protocol != 1 || !validNodeJobIntent(r, binding.NodeJobIntent) || (binding.JobUID != "" && !coordinationIdentity.MatchString(binding.JobUID)) {
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
-	if (binding.PodName != "" || binding.PodUID != "") && (binding.JobUID == "" || len(validation.IsDNS1123Subdomain(binding.PodName)) != 0 || !coordinationIdentity.MatchString(binding.PodUID)) {
+	if (binding.PodName != "" || binding.PodUID != "" || binding.ContainerID != "" || binding.ImageID != "") && (binding.JobUID == "" || len(validation.IsDNS1123Subdomain(binding.PodName)) != 0 || !coordinationIdentity.MatchString(binding.PodUID) || binding.ContainerID == "" || len(binding.ContainerID) > 256 || binding.ImageID == "" || len(binding.ImageID) > 512) {
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
 	return binding, nil
@@ -195,4 +197,28 @@ func ReadNodeJobBinding(database *gorm.DB, r CoordinationRequest) (NodeJobBindin
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
 	return readNodeBinding(r, op)
+}
+
+// ManagedNodeRequest derives the scope/target of a trusted saved selection.
+// It constructs a request only; it never registers or acquires an operation.
+func ManagedNodeRequest(storage StorageRegistration, owner, operationID, fingerprint string, intent NodeJobIntent) (CoordinationRequest, error) {
+	if _, err := storage.Fingerprint(); err != nil {
+		return CoordinationRequest{}, err
+	}
+	expected := sha256.Sum256([]byte("managed-build-cache\x00" + storage.VolumeUID))
+	if storage.RootPath != "/cache/build" || storage.StorageID != hex.EncodeToString(expected[:]) {
+		return CoordinationRequest{}, ErrCoordinationChanged
+	}
+	r := CoordinationRequest{StorageID: storage.StorageID, Generation: storage.Generation, Owner: owner, OperationID: operationID, Kind: "delete", Scope: nodeJobScope(intent), Target: nodeJobTarget(intent), Fingerprint: fingerprint}
+	if intent.Name != "" && intent.Name != nodeJobName(r) {
+		return CoordinationRequest{}, ErrCoordinationChanged
+	}
+	intent.Name = nodeJobName(r)
+	if intent.SpecHash == "" {
+		intent.SpecHash = strings.Repeat("0", 64)
+	}
+	if !validNodeJobIntent(r, intent) {
+		return CoordinationRequest{}, ErrCoordinationChanged
+	}
+	return r, nil
 }

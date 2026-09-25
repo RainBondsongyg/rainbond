@@ -42,22 +42,7 @@ func StartNodeJob(ctx context.Context, database *gorm.DB, client NodeJobStartCli
 		if store.Mode != "ready" || store.MaintenanceOperationID != "" || op.State != "active" || binding.PodUID != "" {
 			return ErrCoordinationBusy
 		}
-		var writers []model.CleanupOperation
-		if err := tx.Where("storage_id = ? AND state <> ? AND kind = ?", r.StorageID, "finished", "producer").Limit(4097).Find(&writers).Error; err != nil {
-			return err
-		}
-		if len(writers) > 4096 {
-			return ErrCoordinationBusy
-		}
-		for _, writer := range writers {
-			if writer.Generation != r.Generation {
-				return ErrCoordinationChanged
-			}
-			if writer.Scope == "*" || writer.Scope == "" || writer.Scope == r.Scope {
-				return ErrCoordinationBusy
-			}
-		}
-		return nil
+		return nodeWritersIdle(tx, r)
 	})
 	if err != nil {
 		return nil, err

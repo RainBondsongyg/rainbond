@@ -14,7 +14,8 @@ import (
 // NodeJobClient is the trusted namespace's typed Kubernetes Job client.
 type NodeJobClient = GCJobClient
 
-func nodeSubmissionHash(job *batchv1.Job, intent NodeJobIntent) (string, error) {
+// NodeJobSpecHash validates and fingerprints the immutable executor spec.
+func NodeJobSpecHash(job *batchv1.Job, intent NodeJobIntent) (string, error) {
 	if job == nil || job.Namespace != intent.Namespace || job.Spec.Template.Spec.NodeName != intent.NodeName || len(job.Spec.Template.Spec.InitContainers) != 0 || len(job.Spec.Template.Spec.EphemeralContainers) != 0 || len(job.Spec.Template.Spec.Containers) != 1 {
 		return "", ErrCoordinationChanged
 	}
@@ -78,7 +79,7 @@ func SubmitSuspendedNodeJob(ctx context.Context, database *gorm.DB, client NodeJ
 	if job.Spec.Template.Spec.AutomountServiceAccountToken == nil {
 		job.Spec.Template.Spec.AutomountServiceAccountToken = &no
 	}
-	if _, err := nodeSubmissionHash(job, intent); err != nil {
+	if _, err := NodeJobSpecHash(job, intent); err != nil {
 		return nil, err
 	}
 	defaulted, err := client.Create(ctx, job, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
@@ -88,7 +89,7 @@ func SubmitSuspendedNodeJob(ctx context.Context, database *gorm.DB, client NodeJ
 	if defaulted == nil || defaulted.Name != job.Name || defaulted.Spec.Suspend == nil || !*defaulted.Spec.Suspend {
 		return nil, ErrCoordinationChanged
 	}
-	hash, err := nodeSubmissionHash(defaulted, intent)
+	hash, err := NodeJobSpecHash(defaulted, intent)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +147,7 @@ func bindObservedNodeJob(database *gorm.DB, r CoordinationRequest, binding NodeJ
 	if binding.JobUID == "" && (job.Spec.Suspend == nil || !*job.Spec.Suspend) {
 		return nil, ErrCoordinationChanged
 	}
-	hash, err := nodeSubmissionHash(job, binding.NodeJobIntent)
+	hash, err := NodeJobSpecHash(job, binding.NodeJobIntent)
 	if err != nil || hash != binding.SpecHash {
 		return nil, ErrCoordinationChanged
 	}
@@ -154,4 +155,16 @@ func bindObservedNodeJob(database *gorm.DB, r CoordinationRequest, binding NodeJ
 		return nil, err
 	}
 	return job, nil
+}
+
+// ValidateBoundNodeJob verifies an already-bound original Job without adoption.
+func ValidateBoundNodeJob(job *batchv1.Job, binding NodeJobBinding) error {
+	if job == nil || binding.Protocol != 1 || binding.JobUID == "" || string(job.UID) != binding.JobUID || job.Name != binding.Name || job.Namespace != binding.Namespace || job.DeletionTimestamp != nil || len(job.OwnerReferences) != 0 {
+		return ErrCoordinationChanged
+	}
+	hash, err := NodeJobSpecHash(job, binding.NodeJobIntent)
+	if err != nil || hash != binding.SpecHash {
+		return ErrCoordinationChanged
+	}
+	return nil
 }

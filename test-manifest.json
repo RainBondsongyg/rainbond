@@ -1226,6 +1226,34 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-executor-admission",
+      "title": "Admit exactly one observed node executor and verify its termination",
+      "title_zh": "Admit exactly one observed node executor and verify its termination",
+      "interface_type": "view_endpoint",
+      "interface": "POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job",
+      "code_paths": [
+        "pkg/cleanup/node_execution.go",
+        "pkg/cleanup/kubeidentity/node_executor.go",
+        "api/controller/cleanup_node_executor.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_execution_test.go",
+          "selector": "TestNodeExecutorAdmissionIsBoundAndSingleUse"
+        },
+        {
+          "path": "pkg/cleanup/kubeidentity/node_executor_test.go",
+          "selector": "TestNodeExecutorRequiresOriginalRuntimeNodeAndMount"
+        },
+        {
+          "path": "api/controller/cleanup_node_executor_test.go",
+          "selector": "TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.node-job-intent",
       "title": "Persist immutable node execution identity before job creation",
       "title_zh": "Persist immutable node execution identity before job creation",

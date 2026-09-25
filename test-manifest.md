@@ -68,6 +68,7 @@
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
 | rainbond.cleanup.market-slug-task-completion | Market slug task waits for completion before returning | active | regression | exectorManager.buildFromMarketSlug | builder/exector/cleanup_task_boundary_test.go::TestMarketSlugTaskWaitsForCompletion |
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
+| rainbond.cleanup.node-executor-admission | Admit exactly one observed node executor and verify its termination | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job | pkg/cleanup/node_execution_test.go::TestNodeExecutorAdmissionIsBoundAndSingleUse<br>pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeExecutorRequiresOriginalRuntimeNodeAndMount<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
 | rainbond.cleanup.node-job-intent | Persist immutable node execution identity before job creation | active | integration | PrepareNodeJob | pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation |
 | rainbond.cleanup.node-job-start | Start only the original protected node cleanup Job | active | integration | StartNodeJob | pkg/cleanup/node_job_start_test.go::TestNodeJobStartChecksProtectionAndReconcilesLostReply |
 | rainbond.cleanup.node-job-submission | Submit one suspended node cleanup Job and reconcile original identity | active | integration | SubmitSuspendedNodeJob | pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating |
@@ -1197,6 +1198,16 @@
 - 业务入口: `exectorManager.buildFromImage`
 - 代码路径: `builder/exector/cleanup_image_admission.go`, `builder/exector/exector.go`, `pkg/cleanup/reference_mutation.go`
 - 测试路径: `builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays`
+
+### Admit exactly one observed node executor and verify its termination
+
+- Capability ID: `rainbond.cleanup.node-executor-admission`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job`
+- 代码路径: `pkg/cleanup/node_execution.go`, `pkg/cleanup/kubeidentity/node_executor.go`, `api/controller/cleanup_node_executor.go`
+- 测试路径: `pkg/cleanup/node_execution_test.go::TestNodeExecutorAdmissionIsBoundAndSingleUse`, `pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeExecutorRequiresOriginalRuntimeNodeAndMount`, `api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce`
 
 ### Persist immutable node execution identity before job creation
 
