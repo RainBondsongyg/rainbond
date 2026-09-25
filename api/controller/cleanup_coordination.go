@@ -29,16 +29,17 @@ import (
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
 type CleanupCoordinationHandler struct {
-	gcTarget           func() (kubernetes.Interface, string, string, error)
-	database           func() *gorm.DB
-	permitKey          func() []byte
-	inspectRegistry    func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
-	inspectParticipant func(context.Context, string, string, string, guard.StorageRegistration) (guard.ParticipantRegistration, error)
+	inspectManagedCache func(context.Context, string, string) (kubeidentity.ManagedCachePreparation, error)
+	gcTarget            func() (kubernetes.Interface, string, string, error)
+	database            func() *gorm.DB
+	permitKey           func() []byte
+	inspectRegistry     func(context.Context, string, string) (kubeidentity.RegistryPreparation, error)
+	inspectParticipant  func(context.Context, string, string, string, guard.StorageRegistration) (guard.ParticipantRegistration, error)
 }
 
 // NewCleanupCoordinationHandler uses the Region database manager.
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
-	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectParticipant: inspectSystemRegistryParticipant, gcTarget: systemRegistryInspectionTarget}
+	return &CleanupCoordinationHandler{database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: func() []byte { return []byte(os.Getenv("TOKEN")) }, inspectRegistry: inspectSystemRegistry, inspectManagedCache: inspectSystemManagedCache, inspectParticipant: inspectSystemRegistryParticipant, gcTarget: systemRegistryInspectionTarget}
 }
 
 // DiscoverStores locates enrolled storage for authenticated platform producers.
@@ -626,4 +627,54 @@ func (h *CleanupCoordinationHandler) RegisterRegistryParticipant(w http.Response
 		Protocol int  `json:"protocol"`
 		Recorded bool `json:"recorded"`
 	}{1, true})
+}
+
+func inspectSystemManagedCache(ctx context.Context, pod, uid string) (kubeidentity.ManagedCachePreparation, error) {
+	client, namespace, _, err := systemRegistryInspectionTarget()
+	if err != nil {
+		return kubeidentity.ManagedCachePreparation{}, err
+	}
+	return kubeidentity.InspectManagedBuildCache(ctx, client, namespace, pod, uid)
+}
+
+// PrepareManagedCache enrolls only observed system build-cache storage. It
+// never accepts filesystem paths or grants deletion readiness.
+func (h *CleanupCoordinationHandler) PrepareManagedCache(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pod    string `json:"pod"`
+		PodUID string `json:"pod_uid"`
+	}
+	if !coordinationDecode(w, r, &body) {
+		return
+	}
+	if len(validation.IsDNS1123Subdomain(body.Pod)) != 0 || !registryPodUID.MatchString(body.PodUID) {
+		httputil.ReturnError(r, w, 400, "INVALID_MANAGED_CACHE_POD")
+		return
+	}
+	if h.inspectManagedCache == nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	observed, err := h.inspectManagedCache(r.Context(), body.Pod, body.PodUID)
+	if err != nil || observed.NodeUID == "" {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	binding, err := guard.ProvisionManagedCacheStorage(h.database(), observed.Mount.VolumeUID, observed.Root)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	status, err := guard.InspectStorage(h.database(), binding.StorageID, binding.Generation)
+	if err != nil {
+		coordinationError(w, r, err)
+		return
+	}
+	httputil.ReturnSuccess(r, w, struct {
+		Protocol     int                       `json:"protocol"`
+		Registration guard.StorageRegistration `json:"registration"`
+		Storage      guard.StorageObservation  `json:"storage"`
+		NodeUID      string                    `json:"node_uid"`
+		NodeName     string                    `json:"node_name"`
+	}{1, binding, status, observed.NodeUID, observed.Mount.NodeName})
 }

@@ -1146,6 +1146,30 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.managed-cache-binding",
+      "title": "Bind managed cache enrollment to observed system storage",
+      "title_zh": "Bind managed cache enrollment to observed system storage",
+      "interface_type": "view_endpoint",
+      "interface": "POST /v2/cleanup/managed-cache/prepare",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/managed_cache.go",
+        "pkg/cleanup/registration.go",
+        "api/controller/cleanup_coordination.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/managed_cache_test.go",
+          "selector": "TestManagedCachePreparationUsesActualNodeAndVolume"
+        },
+        {
+          "path": "api/controller/cleanup_coordination_test.go",
+          "selector": "TestManagedCachePreparationDerivesIdentityAndNeverPromotesReady"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.manual-gc-maintenance",
       "title": "Drain writes and require confirmed restoration around manual GC",
       "title_zh": "Drain writes and require confirmed restoration around manual GC",

@@ -95,7 +95,20 @@ func InspectStorage(database *gorm.DB, storage, generation string) (StorageObser
 // ProvisionRegistryStorage assigns identity from an observed physical volume.
 // Retried provisioning returns the original generation, never a replacement.
 func ProvisionRegistryStorage(database *gorm.DB, volumeUID, root string) (StorageRegistration, error) {
-	key := sha256.Sum256([]byte("registry-filesystem\x00" + volumeUID))
+	return provisionFilesystemStorage(database, "registry-filesystem", volumeUID, root)
+}
+
+// ProvisionManagedCacheStorage enrolls observed cache storage in collecting mode.
+// It does not certify writer coverage or enable deletion.
+func ProvisionManagedCacheStorage(database *gorm.DB, volumeUID, root string) (StorageRegistration, error) {
+	if root != "/cache/build" {
+		return StorageRegistration{}, ErrCoordinationChanged
+	}
+	return provisionFilesystemStorage(database, "managed-build-cache", volumeUID, root)
+}
+
+func provisionFilesystemStorage(database *gorm.DB, domain, volumeUID, root string) (StorageRegistration, error) {
+	key := sha256.Sum256([]byte(domain + "\x00" + volumeUID))
 	storageID := hex.EncodeToString(key[:])
 	read := func() (StorageRegistration, error) {
 		var stored model.CleanupStorage

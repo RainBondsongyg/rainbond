@@ -64,6 +64,7 @@
 | rainbond.cleanup.gc-reject-legacy-cleaner | Reject GC while legacy automatic cleanup is enabled | active | regression | BuildRegistryGCJob | pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCJobRejectsLegacyAutomaticCleanup<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceTracksCleanerProcessButNotStatusHeartbeat |
 | rainbond.cleanup.generic-activation-fence | Reject generic activation of retired version records | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/store_test.go::TestActivationCannotRestoreRetiredTargetThroughGenericSave |
 | rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
+| rainbond.cleanup.managed-cache-binding | Bind managed cache enrollment to observed system storage | active | integration | POST /v2/cleanup/managed-cache/prepare | pkg/cleanup/kubeidentity/managed_cache_test.go::TestManagedCachePreparationUsesActualNodeAndVolume<br>api/controller/cleanup_coordination_test.go::TestManagedCachePreparationDerivesIdentityAndNeverPromotesReady |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
 | rainbond.cleanup.market-slug-task-completion | Market slug task waits for completion before returning | active | regression | exectorManager.buildFromMarketSlug | builder/exector/cleanup_task_boundary_test.go::TestMarketSlugTaskWaitsForCompletion |
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
@@ -1153,6 +1154,16 @@
 - 业务入口: `TransferImportedReferencesToVersions`
 - 代码路径: `pkg/cleanup/reference_handoff.go`, `pkg/cleanup/reference_import.go`, `db/mysql/dao/version.go`
 - 测试路径: `pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack`
+
+### Bind managed cache enrollment to observed system storage
+
+- Capability ID: `rainbond.cleanup.managed-cache-binding`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST /v2/cleanup/managed-cache/prepare`
+- 代码路径: `pkg/cleanup/kubeidentity/managed_cache.go`, `pkg/cleanup/registration.go`, `api/controller/cleanup_coordination.go`
+- 测试路径: `pkg/cleanup/kubeidentity/managed_cache_test.go::TestManagedCachePreparationUsesActualNodeAndVolume`, `api/controller/cleanup_coordination_test.go::TestManagedCachePreparationDerivesIdentityAndNeverPromotesReady`
 
 ### Drain writes and require confirmed restoration around manual GC
 

@@ -104,3 +104,26 @@ func TestProvisionStorageKeepsGenerationAndRejectsChangedDescriptor(t *testing.T
 		t.Fatal("silently changed existing descriptor", err)
 	}
 }
+
+func TestManagedCacheRegistrationIsDistinctAndCannotChangeRoot(t *testing.T) {
+	database, _ := coordinationDB(t)
+	cache, err := ProvisionManagedCacheStorage(database, "shared-volume", "/cache/build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := ProvisionRegistryStorage(database, "shared-volume", "/cache/build")
+	if err != nil || registry.StorageID == cache.StorageID {
+		t.Fatal("cache collided with registry", err)
+	}
+	again, err := ProvisionManagedCacheStorage(database, "shared-volume", "/cache/build")
+	if err != nil || again != cache {
+		t.Fatal("retry changed cache identity", err)
+	}
+	state, err := InspectStorage(database, cache.StorageID, cache.Generation)
+	if err != nil || state.Mode != "collecting" {
+		t.Fatal("enrollment enabled deletion", err)
+	}
+	if _, err := ProvisionManagedCacheStorage(database, "shared-volume", "/arbitrary"); err == nil {
+		t.Fatal("arbitrary cache root accepted")
+	}
+}

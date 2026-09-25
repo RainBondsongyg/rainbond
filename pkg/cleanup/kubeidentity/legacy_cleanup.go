@@ -25,28 +25,9 @@ func inspectLegacyCleaners(ctx context.Context, client kubernetes.Interface, nam
 	if err != nil || pods.ResourceVersion == "" || pods.Continue != "" || len(pods.Items) == 0 || len(pods.Items) > 64 {
 		return nil, ErrBinding
 	}
-	for _, pod := range pods.Items {
-		if pod.UID == "" || pod.ResourceVersion == "" || pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning || len(pod.Spec.Containers) != 1 || len(pod.Spec.EphemeralContainers) != 0 {
-			return nil, ErrBinding
-		}
-		c := &pod.Spec.Containers[0]
-		if len(c.Command) != 1 || c.Command[0] != "/run/rainbond-chaos" || !pinnedRuntimeImage(&pod, c) {
-			return nil, ErrBinding
-		}
-		seen := false
-		for _, arg := range c.Args {
-			if arg == "--" {
-				return nil, ErrBinding
-			}
-			if arg == "--clean-up" || strings.HasPrefix(arg, "--clean-up=") {
-				if seen || arg != "--clean-up=false" {
-					return nil, ErrBinding
-				}
-				seen = true
-			}
-		}
-		if !seen {
-			return nil, ErrBinding
+	for i := range pods.Items {
+		if err := validateDisabledCleaner(&pods.Items[i]); err != nil {
+			return nil, err
 		}
 	}
 	sort.Slice(pods.Items, func(i, j int) bool { return pods.Items[i].Name < pods.Items[j].Name })
@@ -59,4 +40,31 @@ func inspectLegacyCleaners(ctx context.Context, client kubernetes.Interface, nam
 		}
 	}
 	return observations, nil
+}
+
+func validateDisabledCleaner(pod *corev1.Pod) error {
+
+	if pod.UID == "" || pod.ResourceVersion == "" || pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning || len(pod.Spec.Containers) != 1 || len(pod.Spec.EphemeralContainers) != 0 {
+		return ErrBinding
+	}
+	c := &pod.Spec.Containers[0]
+	if len(c.Command) != 1 || c.Command[0] != "/run/rainbond-chaos" || !pinnedRuntimeImage(pod, c) {
+		return ErrBinding
+	}
+	seen := false
+	for _, arg := range c.Args {
+		if arg == "--" {
+			return ErrBinding
+		}
+		if arg == "--clean-up" || strings.HasPrefix(arg, "--clean-up=") {
+			if seen || arg != "--clean-up=false" {
+				return ErrBinding
+			}
+			seen = true
+		}
+	}
+	if !seen {
+		return ErrBinding
+	}
+	return nil
 }
