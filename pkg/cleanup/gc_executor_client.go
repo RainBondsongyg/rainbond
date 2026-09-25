@@ -28,3 +28,19 @@ func (c *CoordinationClient) EnterGCJob(ctx context.Context, r CoordinationReque
 		GCExecutorLocator
 	}{r, executor})
 }
+
+// SubmitGCJob asks Core to derive and persist a suspended executor Job.
+func (c *CoordinationClient) SubmitGCJob(ctx context.Context, r CoordinationRequest) error {
+	if r.Kind != "gc" {
+		return ErrCoordinationChanged
+	}
+	return c.record(ctx, r, "maintenance/job", r)
+}
+
+// StartGCJob requests startup of the original Job; native admission is separate.
+func (c *CoordinationClient) StartGCJob(ctx context.Context, r CoordinationRequest) error {
+	if r.Kind != "gc" {
+		return ErrCoordinationChanged
+	}
+	return c.record(ctx, r, "maintenance/job/start", r)
+}

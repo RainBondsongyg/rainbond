@@ -901,6 +901,8 @@ func (v2 *V2) cleanupCoordinationRouter() chi.Router {
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/request", h.RequestMaintenance)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/enter", h.EnterMaintenance)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/enter-job", h.EnterGCJob)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/job", h.SubmitGCJob)
+	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/job/start", h.StartGCJob)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/cancel", h.CancelDrain)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/complete", h.CompleteMaintenanceWork)
 	r.Post("/stores/{storage_id}/operations/{operation_id}/maintenance/measurement", h.RecordMaintenanceMeasurement)

@@ -16,9 +16,12 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	typedbatch "k8s.io/client-go/kubernetes/typed/batch/v1"
+	ktesting "k8s.io/client-go/testing"
 )
 
 // capability_id: rainbond.cleanup.gc-job-execution-api
@@ -32,7 +35,7 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}).Error; err != nil {
 		t.Fatal(err)
 	}
-	kube, template, volume := gcAdmissionFixture(t)
+	kube, _, volume := gcAdmissionFixture(t)
 	binding := guard.StorageRegistration{StorageID: "store", Generation: "gen", VolumeUID: volume, RootPath: "/registry"}
 	if err := guard.RegisterStorage(database, binding); err != nil {
 		t.Fatal(err)
@@ -45,11 +48,15 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An unprepared/foreign pod must fail before any execution grant.
-	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, gcTarget: func() (kubernetes.Interface, string, string, error) { return kube, "system", "rbd-hub", nil }}
+	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, gcTarget: func() (kubernetes.Interface, string, string, error) {
+		return gcAdmissionKubeClient{Interface: kube}, "system", "rbd-hub", nil
+	}}
 	t.Setenv("TOKEN", "gc-isolated-fixture")
 	router := chi.NewRouter()
 	router.Use(middleware.FullToken)
 	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/enter-job", h.EnterGCJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job", h.SubmitGCJob)
+	router.Post("/v2/cleanup/stores/{storage_id}/operations/{operation_id}/maintenance/job/start", h.StartGCJob)
 	server := httptest.NewServer(router)
 	defer server.Close()
 	client, err := guard.NewCoordinationClient(server.URL, "gc-isolated-fixture", true)
@@ -70,16 +77,32 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	if response.Code != 401 {
 		t.Fatal("unauthenticated admission", response.Code)
 	}
+	// Runtime overrides are not part of the API contract, even for an authenticated caller.
+	injected := httptest.NewRequest("POST", "/v2/cleanup/stores/store/operations/gc-op/maintenance/job", strings.NewReader(`{"image":"caller-image"}`))
+	injected.Header.Set("Authorization", "Token gc-isolated-fixture")
+	invalid := httptest.NewRecorder()
+	router.ServeHTTP(invalid, injected)
+	if invalid.Code != 400 {
+		t.Fatal("caller executable override accepted", invalid.Code)
+	}
 	// Store and job identity validation still runs even with valid internal auth.
-	job, err := guard.SubmitSuspendedGCJob(context.Background(), database, gcAdmissionJobClient{JobInterface: kube.BatchV1().Jobs("system")}, r, template)
+	for i := 0; i < 2; i++ {
+		if err := client.SubmitGCJob(context.Background(), r); err != nil {
+			t.Fatal("submit failed", err)
+		}
+	}
+	recorded, err := guard.ReadGCJobBinding(database, r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	no, yes := false, true
-	job.Spec.Suspend = &no
-	if _, err := kube.BatchV1().Jobs("system").Update(context.Background(), job, metav1.UpdateOptions{}); err != nil {
+	if err := client.StartGCJob(context.Background(), r); err != nil {
+		t.Fatal("start failed", err)
+	}
+	job, err := kube.BatchV1().Jobs("system").Get(context.Background(), recorded.Name, metav1.GetOptions{})
+	if err != nil {
 		t.Fatal(err)
 	}
+	yes := true
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: locator.Pod, Namespace: "system", UID: "gc-pod-uid", ResourceVersion: "1", OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: &yes}}}, Spec: *job.Spec.Template.Spec.DeepCopy(), Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{{Name: "gc", ImageID: job.Spec.Template.Spec.Containers[0].Image, ContainerID: "containerd://owned", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}}}
 	if _, err := kube.CoreV1().Pods("system").Create(context.Background(), pod, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
@@ -120,8 +143,11 @@ func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
 	spec := corev1.PodSpec{NodeName: "node", RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &no, Containers: []corev1.Container{native}, Volumes: []corev1.Volume{{Name: "data", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "data"}}}}}
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "system"}, Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: spec}}}
 	hub := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "hub", Namespace: "system", UID: "hub-uid", Labels: map[string]string{"app": "hub"}}, Spec: *spec.DeepCopy()}
-	hub.Spec.Containers[0].Env = []corev1.EnvVar{{Name: "REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", Value: "/registry"}}
-	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "rbd-hub", Namespace: "system"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "hub"}}}
+	hub.ResourceVersion = "1"
+	hub.Annotations = map[string]string{"rainbond.io/registry-gc-executor": "v1"}
+	hub.Spec.Containers[0].Name = "registry"
+	hub.Spec.Containers[0].Env = []corev1.EnvVar{{Name: "REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", Value: "/registry"}, {Name: "REGISTRY_HTTP_ADDR", Value: "127.0.0.1:5000"}, {Name: "REGISTRY_STORAGE_MAINTENANCE_UPLOADPURGING_ENABLED", Value: "false"}}
+	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "rbd-hub", Namespace: "system", UID: "service-uid", ResourceVersion: "1"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "hub"}, Ports: []corev1.ServicePort{{Port: 5000, TargetPort: intstr.FromInt(5001)}}}}
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "system", UID: "pvc-uid"}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
 	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv", UID: "pv-uid"}, Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Namespace: "system", Name: "data", UID: "pvc-uid"}}, Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound}}
 	client := fake.NewSimpleClientset(hub, svc, pvc, pv)
@@ -129,6 +155,20 @@ func gcAdmissionFixture(t *testing.T) (*fake.Clientset, *batchv1.Job, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sidecar := corev1.Container{Name: "coordinator", Image: native.Image, Command: []string{"/registry-coordinator"}, VolumeMounts: []corev1.VolumeMount{{Name: "data", MountPath: "/registry", SubPath: "owned", ReadOnly: true}, {Name: "control", MountPath: "/control", ReadOnly: true}}, Args: []string{"--listen=:5001", "--upstream=http://127.0.0.1:5000", "--storage-id=store", "--storage-generation=gen", "--volume-uid=" + observed.Mount.VolumeUID, "--registry-path=/registry", "--storage-root=/registry", "--coordination-api=http://rbd-api.system:8443", "--allow-internal-http=true", "--credential-file=/control/token"}}
+	hub.Spec.Containers = append(hub.Spec.Containers, sidecar)
+	hub.Spec.Volumes = append(hub.Spec.Volumes, corev1.Volume{Name: "control", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "coordination"}}})
+	hub.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coordinator", ImageID: native.Image, ContainerID: "containerd://coordinator", State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+	if _, err := client.CoreV1().Pods("system").Update(context.Background(), hub, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	client.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+		result, err := client.Tracker().List(corev1.SchemeGroupVersion.WithResource("pods"), corev1.SchemeGroupVersion.WithKind("Pod"), action.GetNamespace())
+		if err == nil {
+			result.(*corev1.PodList).ResourceVersion = "snapshot"
+		}
+		return true, result, err
+	})
 	return client, job, observed.Mount.VolumeUID
 }
 
@@ -142,4 +182,16 @@ func (c gcAdmissionJobClient) Create(ctx context.Context, job *batchv1.Job, opti
 	observed.UID = "job-uid"
 	observed.ResourceVersion = "1"
 	return c.JobInterface.Create(ctx, observed, options)
+}
+
+type gcAdmissionKubeClient struct{ kubernetes.Interface }
+
+func (c gcAdmissionKubeClient) BatchV1() typedbatch.BatchV1Interface {
+	return gcAdmissionBatchClient{BatchV1Interface: c.Interface.BatchV1()}
+}
+
+type gcAdmissionBatchClient struct{ typedbatch.BatchV1Interface }
+
+func (c gcAdmissionBatchClient) Jobs(namespace string) typedbatch.JobInterface {
+	return gcAdmissionJobClient{JobInterface: c.BatchV1Interface.Jobs(namespace)}
 }

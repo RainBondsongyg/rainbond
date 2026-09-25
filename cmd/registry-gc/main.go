@@ -33,11 +33,12 @@ func runGC(ctx context.Context, args []string, invoke gcInvocation) error {
 	}
 	flags := flag.NewFlagSet("registry-gc", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var configFile, credentialFile, endpoint, caFile, certFile, keyFile string
+	var configFile, credentialFile, endpoint, caFile, certFile, keyFile, serverName string
 	var allowHTTP, recover bool
 	flags.StringVar(&configFile, "configuration-file", "", "server-generated operation descriptor")
 	flags.StringVar(&credentialFile, "credential-file", "", "mounted internal coordination credential")
 	flags.StringVar(&endpoint, "coordination-api", "", "trusted Region API origin")
+	flags.StringVar(&serverName, "coordination-server-name", "", "verified API TLS server name")
 	flags.StringVar(&caFile, "coordination-ca-file", "", "trusted API CA bundle")
 	flags.StringVar(&certFile, "coordination-client-cert-file", "", "mounted API client certificate")
 	flags.StringVar(&keyFile, "coordination-client-key-file", "", "mounted API client key")
@@ -50,12 +51,25 @@ func runGC(ctx context.Context, args []string, invoke gcInvocation) error {
 		Binding coordination.StorageRegistration `json:"binding"`
 		Request coordination.CoordinationRequest `json:"request"`
 	}
-	file, err := os.Open(configFile)
-	if err != nil {
-		return errConfiguration
+	input := os.Getenv("CLEANUP_GC_OPERATION")
+	var source io.Reader
+	if configFile != "" {
+		if input != "" {
+			return errConfiguration
+		}
+		file, err := os.Open(configFile)
+		if err != nil {
+			return errConfiguration
+		}
+		defer file.Close()
+		source = io.LimitReader(file, 16385)
+	} else {
+		if input == "" || len(input) > 16384 {
+			return errConfiguration
+		}
+		source = strings.NewReader(input)
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(io.LimitReader(file, 16385))
+	decoder := json.NewDecoder(source)
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&descriptor) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return errConfiguration
@@ -80,7 +94,7 @@ func runGC(ctx context.Context, args []string, invoke gcInvocation) error {
 	if token == "" || strings.ContainsAny(token, " \r\n\t") {
 		return errConfiguration
 	}
-	configuration := &tls.Config{MinVersion: tls.VersionTLS12}
+	configuration := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: serverName}
 	if caFile != "" {
 		ca, err := os.ReadFile(caFile)
 		if err != nil {

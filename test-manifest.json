@@ -900,6 +900,29 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-job-start",
+      "title": "Start the recorded GC Job only after writer drain",
+      "title_zh": "Start the recorded GC Job only after writer drain",
+      "interface_type": "workflow",
+      "interface": "cleanup.StartGCJob",
+      "code_paths": [
+        "pkg/cleanup/gc_job_start.go",
+        "pkg/cleanup/maintenance.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/gc_job_start_test.go",
+          "selector": "TestGCJobStartWaitsForWritersAndNeverReplaysLostStart"
+        },
+        {
+          "path": "pkg/cleanup/gc_job_start_test.go",
+          "selector": "TestGCJobStartRejectsCanceledOperation"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-job-submission",
       "title": "Persist GC submission and reconcile without replay",
       "title_zh": "Persist GC submission and reconcile without replay",
@@ -925,6 +948,29 @@
         {
           "path": "pkg/cleanup/gc_job_submit_test.go",
           "selector": "TestGCSubmissionCanceledAndDryRunFailureLeaveNoIntent"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.gc-job-template",
+      "title": "Derive GC Job from verified Registry storage and credential references",
+      "title_zh": "Derive GC Job from verified Registry storage and credential references",
+      "interface_type": "workflow",
+      "interface": "kubeidentity.BuildRegistryGCJob",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/gc_job_template.go",
+        "api/controller/cleanup_gc_launch.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_job_template_test.go",
+          "selector": "TestGCJobTemplateUsesObservedStorageAndMountedCredentials"
+        },
+        {
+          "path": "pkg/cleanup/kubeidentity/gc_job_template_test.go",
+          "selector": "TestGCJobTemplateRejectsUnsafeSource"
         }
       ],
       "test_type": "regression",

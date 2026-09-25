@@ -51,6 +51,11 @@ func (h *CleanupCoordinationHandler) EnterGCJob(w http.ResponseWriter, r *http.R
 		coordinationError(w, r, err)
 		return
 	}
+	current, err := kubeidentity.BuildRegistryGCJob(r.Context(), client, namespace, service, storage, body.CoordinationRequest)
+	if err != nil || len(job.Spec.Template.Spec.Containers) != 1 || current.Spec.Template.Spec.Containers[0].Image != job.Spec.Template.Spec.Containers[0].Image {
+		coordinationError(w, r, guard.ErrCoordinationChanged)
+		return
+	}
 	observed, err := kubeidentity.InspectGCExecutor(r.Context(), client, service, job, body.Pod, body.PodUID, storage)
 	if err != nil {
 		coordinationError(w, r, guard.ErrCoordinationChanged)

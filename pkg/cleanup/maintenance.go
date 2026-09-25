@@ -104,19 +104,26 @@ func EnterMaintenance(database *gorm.DB, r CoordinationRequest) error {
 	})
 }
 
-func enterMaintenanceExclusive(tx *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation, r CoordinationRequest) (bool, error) {
+func maintenanceDrained(tx *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation, r CoordinationRequest) error {
 	if op.State == "uncertain" {
-		return false, ErrCoordinationUncertain
+		return ErrCoordinationUncertain
 	}
 	if store.Mode != "draining" || op.State != "draining" {
-		return false, ErrCoordinationChanged
+		return ErrCoordinationChanged
 	}
 	var outstanding int
 	if err := tx.Model(&model.CleanupOperation{}).Where("storage_id = ? AND operation_id <> ? AND state <> ?", r.StorageID, r.OperationID, "finished").Count(&outstanding).Error; err != nil {
-		return false, err
+		return err
 	}
 	if outstanding != 0 {
-		return false, ErrCoordinationBusy
+		return ErrCoordinationBusy
+	}
+	return nil
+}
+
+func enterMaintenanceExclusive(tx *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation, r CoordinationRequest) (bool, error) {
+	if err := maintenanceDrained(tx, store, op, r); err != nil {
+		return false, err
 	}
 	store.Mode = "maintenance"
 	op.State = "exclusive"

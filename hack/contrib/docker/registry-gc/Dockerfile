@@ -15,9 +15,11 @@ COPY . .
 RUN digest="${REGISTRY_IMAGE##*@sha256:}" && \
     test "$digest" != "$REGISTRY_IMAGE" && test "${#digest}" = 64 && \
     case "$digest" in *[!0-9a-f]*) exit 1;; esac && \
-    GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /registry-gc ./cmd/registry-gc
+    GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /registry-gc ./cmd/registry-gc && \
+    GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /registry-coordinator ./cmd/registry-coordinator
 
 FROM native
 COPY --from=compile /registry-gc /registry-gc
+COPY --from=compile /registry-coordinator /registry-coordinator
 ENTRYPOINT ["/registry-gc"]
 CMD []

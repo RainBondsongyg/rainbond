@@ -14,6 +14,7 @@ import (
 
 // capability_id: rainbond.cleanup.gc-executor-command
 func TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery(t *testing.T) {
+	t.Setenv("CLEANUP_GC_OPERATION", "")
 	directory := t.TempDir()
 	configuration := filepath.Join(directory, "operation.json")
 	credential := filepath.Join(directory, "credential")
@@ -42,20 +43,32 @@ func TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery(t *testing.T) {
 	if err := runGC(context.Background(), append(append([]string{}, args...), "--recover"), invoke); err != nil || called != 2 || !recoverMode {
 		t.Fatal(called, err)
 	}
+	descriptor, err := os.ReadFile(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLEANUP_GC_OPERATION", string(descriptor))
+	if err := runGC(context.Background(), args[2:], invoke); err != nil || called != 3 {
+		t.Fatal("Job environment descriptor failed", err)
+	}
+	if err := runGC(context.Background(), args, invoke); err == nil || called != 3 {
+		t.Fatal("ambiguous descriptor accepted", err)
+	}
+	t.Setenv("CLEANUP_GC_OPERATION", "")
 	t.Setenv("POD_UID", "")
-	if err := runGC(context.Background(), args, invoke); err == nil || called != 2 {
+	if err := runGC(context.Background(), args, invoke); err == nil || called != 3 {
 		t.Fatal("missing downward API identity executed", err)
 	}
 	t.Setenv("POD_UID", "pod-uid")
 	if err := os.WriteFile(configuration, []byte(`{"binding":{},"request":{},"binary":"/bin/sh"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runGC(context.Background(), args, invoke); err == nil || called != 2 {
+	if err := runGC(context.Background(), args, invoke); err == nil || called != 3 {
 		t.Fatal("unknown execution override accepted", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := runGC(ctx, args, invoke); err == nil || called != 2 {
+	if err := runGC(ctx, args, invoke); err == nil || called != 3 {
 		t.Fatal("canceled execution invoked", err)
 	}
 }
