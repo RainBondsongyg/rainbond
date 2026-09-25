@@ -3,11 +3,15 @@ package cleanup
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 
 	"github.com/goodrain/rainbond/db/model"
 	"github.com/jinzhu/gorm"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
+
+// ErrGCJobNotPrepared means a draining operation has no persisted Job intent.
+var ErrGCJobNotPrepared = errors.New("GC job intent is not prepared")
 
 // GCJobIntent records a server-generated Job specification before submission.
 // A repeated preparation is inspection, never permission to recreate the Job.
@@ -52,7 +56,7 @@ func gcIntent(op *model.CleanupOperation) GCJobIntent {
 	return GCJobIntent{Namespace: op.GCJobNamespace, Name: op.GCJobName, SpecHash: op.GCJobSpecHash}
 }
 
-// PrepareGCJob must commit before a trusted launcher contacts Kubernetes. On any
+// PrepareGCJob must commit before a trusted launcher persists a Kubernetes Job. On any
 // error the launcher must stop; a lost commit acknowledgment is not a retry grant.
 func PrepareGCJob(database *gorm.DB, r CoordinationRequest, namespace, specHash string) (GCJobIntent, bool, error) {
 	intent := GCJobIntent{Namespace: namespace, Name: gcJobName(r), SpecHash: specHash}
@@ -144,7 +148,13 @@ func ReadGCJobBinding(database *gorm.DB, r CoordinationRequest) (GCJobBinding, e
 	if err := database.Where("operation_id = ?", r.OperationID).First(&op).Error; err != nil {
 		return GCJobBinding{}, err
 	}
-	if !r.matches(op) || !validGCJobBinding(r, &op) {
+	if !r.matches(op) {
+		return GCJobBinding{}, ErrCoordinationChanged
+	}
+	if !hasGCJobBinding(&op) && op.State == "draining" {
+		return GCJobBinding{}, ErrGCJobNotPrepared
+	}
+	if !validGCJobBinding(r, &op) {
 		return GCJobBinding{}, ErrCoordinationChanged
 	}
 	return GCJobBinding{GCJobIntent: gcIntent(&op), JobUID: op.GCJobUID, PodName: op.GCPodName, PodUID: op.GCPodUID}, nil

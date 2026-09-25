@@ -840,6 +840,37 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.gc-job-submission",
+      "title": "Persist GC submission and reconcile without replay",
+      "title_zh": "Persist GC submission and reconcile without replay",
+      "interface_type": "workflow",
+      "interface": "cleanup.SubmitSuspendedGCJob",
+      "code_paths": [
+        "pkg/cleanup/gc_job_submit.go",
+        "pkg/cleanup/gc_job.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/gc_job_submit_test.go",
+          "selector": "TestGCSubmissionPersistsBeforeCreateAndReconcilesLostResponse"
+        },
+        {
+          "path": "pkg/cleanup/gc_job_submit_test.go",
+          "selector": "TestGCSubmissionRejectsUnsafeRetrySettings"
+        },
+        {
+          "path": "pkg/cleanup/gc_job_submit_test.go",
+          "selector": "TestGCSubmissionDefaultingAndMutation"
+        },
+        {
+          "path": "pkg/cleanup/gc_job_submit_test.go",
+          "selector": "TestGCSubmissionCanceledAndDryRunFailureLeaveNoIntent"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.generic-activation-fence",
       "title": "Reject generic activation of retired version records",
       "title_zh": "Reject generic activation of retired version records",
