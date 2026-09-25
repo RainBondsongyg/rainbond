@@ -9,7 +9,7 @@ import (
 
 func TestRegionReferenceAuditChecksRetainedVersionsAndPluginImages(t *testing.T) {
 	database, _ := coordinationDB(t)
-	if err := database.AutoMigrate(&model.VersionInfo{}, &model.TenantPluginBuildVersion{}, &model.K8sResource{}).Error; err != nil {
+	if err := database.AutoMigrate(&model.VersionInfo{}, &model.TenantPluginBuildVersion{}, &model.K8sResource{}, &model.KeyValue{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	selected := operation("audit", "delete", "app")

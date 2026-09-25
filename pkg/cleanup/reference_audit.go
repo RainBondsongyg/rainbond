@@ -100,6 +100,11 @@ func collectRegionReferenceImages(tx *gorm.DB) (RegionReferenceInventory, error)
 	if err := rows.Close(); err != nil {
 		return denied, err
 	}
+	importComplete, err := inspectImportReferences(tx, inspect)
+	if err != nil {
+		return denied, err
+	}
+	result.Complete = result.Complete && importComplete
 	if overflow {
 		return denied, ErrCoordinationUnavailable
 	}
@@ -139,6 +144,7 @@ func ReadRegionReferenceInventory(database *gorm.DB, storage, generation string)
 	return result, nil
 }
 
+// AuditRegionManifestReferences checks retained records under the original active deletion admission.
 func AuditRegionManifestReferences(database *gorm.DB, r CoordinationRequest, tags []string) (RegionReferenceAudit, error) {
 	denied := RegionReferenceAudit{}
 	if !r.valid() || r.Kind != "delete" || !registryDeletionDigest.MatchString(r.Target) || len(tags) > 256 {

@@ -1178,6 +1178,33 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.pending-import-references",
+      "title": "Include retained tar import and check receipts in reference audits",
+      "title_zh": "Include retained tar import and check receipts in reference audits",
+      "interface_type": "workflow",
+      "interface": "cleanup.collectRegionReferenceImages",
+      "code_paths": [
+        "pkg/cleanup/reference_import.go",
+        "pkg/cleanup/reference_audit.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/reference_import_test.go",
+          "selector": "TestImportedImagesRemainReferencedUntilTheirRecordsAreReleased"
+        },
+        {
+          "path": "pkg/cleanup/reference_import_test.go",
+          "selector": "TestIncompleteImportRecordsCannotProveAbsence"
+        },
+        {
+          "path": "pkg/cleanup/reference_import_test.go",
+          "selector": "TestRejectedAndNonImageChecksDoNotInventReferences"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.plugin-version-reference-coordination",
       "title": "Plugin version writes respect selected deletion and cannot resurrect records",
       "title_zh": "Plugin version writes respect selected deletion and cannot resurrect records",

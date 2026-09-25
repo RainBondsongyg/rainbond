@@ -316,7 +316,7 @@ func TestRegistryReferenceAuditUsesBoundAuthenticatedOperation(t *testing.T) {
 	}
 	defer database.Close()
 	database.LogMode(false)
-	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}, &model.TenantPluginBuildVersion{}, &model.K8sResource{}).Error; err != nil {
+	if err := database.AutoMigrate(&model.CleanupStorage{}, &model.CleanupOperation{}, &model.VersionInfo{}, &model.TenantPluginBuildVersion{}, &model.K8sResource{}, &model.KeyValue{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Create(&model.CleanupStorage{StorageID: "owned", Generation: "one", Mode: "ready"}).Error; err != nil {
