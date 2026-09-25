@@ -97,23 +97,30 @@ func changeMaintenance(database *gorm.DB, r CoordinationRequest, change maintena
 // operations have finished. A lost response must be inspected, never replayed.
 func EnterMaintenance(database *gorm.DB, r CoordinationRequest) error {
 	return changeMaintenance(database, r, func(tx *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation) (bool, error) {
-		if op.State == "uncertain" {
-			return false, ErrCoordinationUncertain
-		}
-		if store.Mode != "draining" || op.State != "draining" {
+		if hasGCJobBinding(op) {
 			return false, ErrCoordinationChanged
 		}
-		var outstanding int
-		if err := tx.Model(&model.CleanupOperation{}).Where("storage_id = ? AND operation_id <> ? AND state <> ?", r.StorageID, r.OperationID, "finished").Count(&outstanding).Error; err != nil {
-			return false, err
-		}
-		if outstanding != 0 {
-			return false, ErrCoordinationBusy
-		}
-		store.Mode = "maintenance"
-		op.State = "exclusive"
-		return true, nil
+		return enterMaintenanceExclusive(tx, store, op, r)
 	})
+}
+
+func enterMaintenanceExclusive(tx *gorm.DB, store *model.CleanupStorage, op *model.CleanupOperation, r CoordinationRequest) (bool, error) {
+	if op.State == "uncertain" {
+		return false, ErrCoordinationUncertain
+	}
+	if store.Mode != "draining" || op.State != "draining" {
+		return false, ErrCoordinationChanged
+	}
+	var outstanding int
+	if err := tx.Model(&model.CleanupOperation{}).Where("storage_id = ? AND operation_id <> ? AND state <> ?", r.StorageID, r.OperationID, "finished").Count(&outstanding).Error; err != nil {
+		return false, err
+	}
+	if outstanding != 0 {
+		return false, ErrCoordinationBusy
+	}
+	store.Mode = "maintenance"
+	op.State = "exclusive"
+	return true, nil
 }
 
 // CompleteMaintenanceWork is called after the owned GC process has exited and
