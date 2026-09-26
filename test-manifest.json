@@ -1226,6 +1226,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-candidate-readiness",
+      "title": "Require idle coordinated storage before showing cache candidates",
+      "title_zh": "Require idle coordinated storage before showing cache candidates",
+      "interface_type": "workflow",
+      "interface": "cleanup.InspectManagedCacheReadiness",
+      "code_paths": [
+        "pkg/cleanup/node_readiness.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_readiness_test.go",
+          "selector": "TestNodeReadinessDoesNotIgnoreActiveOperations"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.node-executor-admission",
       "title": "Admit exactly one observed node executor and verify its termination",
       "title_zh": "Admit exactly one observed node executor and verify its termination",

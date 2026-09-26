@@ -666,16 +666,17 @@ func (h *CleanupCoordinationHandler) PrepareManagedCache(w http.ResponseWriter, 
 		coordinationError(w, r, err)
 		return
 	}
-	status, err := guard.InspectStorage(h.database(), binding.StorageID, binding.Generation)
+	status, quiescent, err := guard.InspectManagedCacheReadiness(h.database(), binding)
 	if err != nil {
 		coordinationError(w, r, err)
 		return
 	}
 	httputil.ReturnSuccess(r, w, struct {
 		Protocol     int                       `json:"protocol"`
+		Quiescent    bool                      `json:"quiescent"`
 		Registration guard.StorageRegistration `json:"registration"`
 		Storage      guard.StorageObservation  `json:"storage"`
 		NodeUID      string                    `json:"node_uid"`
 		NodeName     string                    `json:"node_name"`
-	}{1, binding, status, observed.NodeUID, observed.Mount.NodeName})
+	}{1, quiescent, binding, status, observed.NodeUID, observed.Mount.NodeName})
 }
