@@ -13,6 +13,7 @@ import (
 	"github.com/goodrain/rainbond/api/middleware"
 	"github.com/goodrain/rainbond/db/model"
 	guard "github.com/goodrain/rainbond/pkg/cleanup"
+	"github.com/goodrain/rainbond/pkg/cleanup/kubeidentity"
 	"github.com/jinzhu/gorm"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,9 +53,23 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	if _, err := guard.AcquireOperation(database, r); err != nil {
 		t.Fatal(err)
 	}
-	template.Spec.Template.Spec.Containers[0].Name = "node-cleanup"
-	template.Spec.Template.Spec.Containers[0].Command = []string{"/app/node-cleanup"}
-	template.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = storage.RootPath
+
+	source, err := kube.CoreV1().Pods("system").Get(context.Background(), "chaos", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Spec.NodeName = "node"
+	source.Spec.Volumes = template.Spec.Template.Spec.Volumes
+	source.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{Name: "data", MountPath: "/cache/build", SubPath: "owned"}}
+	kube.CoreV1().Pods("system").Update(context.Background(), source, metav1.UpdateOptions{})
+	state := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "state", Namespace: "system", UID: "state-uid"}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "state-pv"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
+	kube.CoreV1().PersistentVolumeClaims("system").Create(context.Background(), state, metav1.CreateOptions{})
+	kube.CoreV1().PersistentVolumes().Create(context.Background(), &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "state-pv", UID: "state-pv-uid"}, Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: "state", Namespace: "system", UID: state.UID}}}, metav1.CreateOptions{})
+	settings := kubeidentity.NodeJobSettings{Region: "rainbond", Image: "example.test/plugin@sha256:" + strings.Repeat("b", 64), Endpoint: "https://core.internal:8443", CredentialSecret: "core", StateClaim: "state"}
+	template, err = kubeidentity.BuildManagedNodeJob(context.Background(), kube, "chaos", "chaos-uid", storage, r, intent, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
 	jobs := gcAdmissionKubeClient{Interface: kube}.BatchV1().Jobs("system")
 	job, err := guard.SubmitSuspendedNodeJob(context.Background(), database, jobs, r, intent, template)
 	if err != nil {
@@ -69,7 +84,7 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	if _, err := kube.CoreV1().Pods("system").Create(context.Background(), pod, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, gcTarget: func() (kubernetes.Interface, string, string, error) { return kube, "system", "rbd-hub", nil }}
+	h := &CleanupCoordinationHandler{nodeSettings: func() kubeidentity.NodeJobSettings { return settings }, database: func() *gorm.DB { return database }, gcTarget: func() (kubernetes.Interface, string, string, error) { return kube, "system", "rbd-hub", nil }}
 	t.Setenv("TOKEN", "isolated-node-fixture")
 	router := chi.NewRouter()
 	router.Use(middleware.FullToken)
@@ -102,6 +117,13 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	if err := client.EnterNodeJob(context.Background(), r, wrong); err == nil {
 		t.Fatal("wrong pod admitted")
 	}
+
+	originalImage := settings.Image
+	settings.Image = "example.test/plugin@sha256:" + strings.Repeat("d", 64)
+	if err := client.EnterNodeJob(context.Background(), r, locator); err == nil {
+		t.Fatal("changed source granted native deletion")
+	}
+	settings.Image = originalImage
 	if err := client.EnterNodeJob(context.Background(), r, locator); err != nil {
 		t.Fatal(err)
 	}

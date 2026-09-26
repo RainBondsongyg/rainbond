@@ -1275,6 +1275,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-job-launch-api",
+      "title": "Launch only the original verified node cleanup job",
+      "title_zh": "Launch only the original verified node cleanup job",
+      "interface_type": "view_endpoint",
+      "interface": "POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/submit-job",
+      "code_paths": [
+        "api/controller/cleanup_node_launch.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_node_launch_test.go",
+          "selector": "TestNodeLaunchAPIRechecksSourceBeforeStarting"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.node-job-start",
       "title": "Start only the original protected node cleanup Job",
       "title_zh": "Start only the original protected node cleanup Job",
@@ -1308,6 +1326,24 @@
         }
       ],
       "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.node-job-template",
+      "title": "Bind node cleanup jobs to observed cache and persistent state",
+      "title_zh": "Bind node cleanup jobs to observed cache and persistent state",
+      "interface_type": "workflow",
+      "interface": "kubeidentity.BuildManagedNodeJob",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/node_job_template.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/node_job_template_test.go",
+          "selector": "TestNodeJobTemplateBindsCacheAndDurableState"
+        }
+      ],
+      "test_type": "regression",
       "status": "active"
     },
     {

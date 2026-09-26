@@ -70,8 +70,10 @@
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
 | rainbond.cleanup.node-executor-admission | Admit exactly one observed node executor and verify its termination | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job | pkg/cleanup/node_execution_test.go::TestNodeExecutorAdmissionIsBoundAndSingleUse<br>pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeExecutorRequiresOriginalRuntimeNodeAndMount<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
 | rainbond.cleanup.node-job-intent | Persist immutable node execution identity before job creation | active | integration | PrepareNodeJob | pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation |
+| rainbond.cleanup.node-job-launch-api | Launch only the original verified node cleanup job | active | regression | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/submit-job | api/controller/cleanup_node_launch_test.go::TestNodeLaunchAPIRechecksSourceBeforeStarting |
 | rainbond.cleanup.node-job-start | Start only the original protected node cleanup Job | active | integration | StartNodeJob | pkg/cleanup/node_job_start_test.go::TestNodeJobStartChecksProtectionAndReconcilesLostReply |
 | rainbond.cleanup.node-job-submission | Submit one suspended node cleanup Job and reconcile original identity | active | integration | SubmitSuspendedNodeJob | pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating |
+| rainbond.cleanup.node-job-template | Bind node cleanup jobs to observed cache and persistent state | active | regression | kubeidentity.BuildManagedNodeJob | pkg/cleanup/kubeidentity/node_job_template_test.go::TestNodeJobTemplateBindsCacheAndDurableState |
 | rainbond.cleanup.node-result-finalization | Finalize known original node results only after verified executor exit | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish | pkg/cleanup/node_result_test.go::TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor<br>pkg/cleanup/node_result_test.go::TestNodeResultRejectsInvalidFilesystemEvidence<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
 | rainbond.cleanup.participant-replacement | Participant replacement preserves active deletion protection | active | regression | cleanup.RegisterParticipant | pkg/cleanup/participant_test.go::TestParticipantReplacementWithdrawsReadinessWithoutLosingDeletion |
 | rainbond.cleanup.pending-import-references | Include retained tar import and check receipts in reference audits | active | regression | cleanup.collectRegionReferenceImages | pkg/cleanup/reference_import_test.go::TestImportedImagesRemainReferencedUntilTheirRecordsAreReleased<br>pkg/cleanup/reference_import_test.go::TestIncompleteImportRecordsCannotProveAbsence<br>pkg/cleanup/reference_import_test.go::TestRejectedAndNonImageChecksDoNotInventReferences |
@@ -1220,6 +1222,16 @@
 - 代码路径: `pkg/cleanup/node_job.go`, `pkg/cleanup/coordination.go`, `pkg/cleanup/deletion_attempt.go`, `db/model/cleanup_coordination.go`
 - 测试路径: `pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation`
 
+### Launch only the original verified node cleanup job
+
+- Capability ID: `rainbond.cleanup.node-job-launch-api`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `view_endpoint`
+- 业务入口: `POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/submit-job`
+- 代码路径: `api/controller/cleanup_node_launch.go`
+- 测试路径: `api/controller/cleanup_node_launch_test.go::TestNodeLaunchAPIRechecksSourceBeforeStarting`
+
 ### Start only the original protected node cleanup Job
 
 - Capability ID: `rainbond.cleanup.node-job-start`
@@ -1239,6 +1251,16 @@
 - 业务入口: `SubmitSuspendedNodeJob`
 - 代码路径: `pkg/cleanup/node_job_submit.go`
 - 测试路径: `pkg/cleanup/node_job_submit_test.go::TestNodeSubmissionReconcilesLostCreateWithoutRecreating`
+
+### Bind node cleanup jobs to observed cache and persistent state
+
+- Capability ID: `rainbond.cleanup.node-job-template`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `kubeidentity.BuildManagedNodeJob`
+- 代码路径: `pkg/cleanup/kubeidentity/node_job_template.go`
+- 测试路径: `pkg/cleanup/kubeidentity/node_job_template_test.go::TestNodeJobTemplateBindsCacheAndDurableState`
 
 ### Finalize known original node results only after verified executor exit
 

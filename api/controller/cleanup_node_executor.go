@@ -76,6 +76,10 @@ func (h *CleanupCoordinationHandler) EnterNodeJob(w http.ResponseWriter, r *http
 		httputil.ReturnError(r, w, 400, "INVALID_NODE_EXECUTOR")
 		return
 	}
+	if err := h.validateNodeLaunchSource(r.Context(), body.CoordinationRequest); err != nil {
+		nodeAPIError(w, r, err)
+		return
+	}
 	observed, err := h.inspectNodeExecution(r.Context(), body.CoordinationRequest, body.NodeExecutorLocator, false)
 	if err != nil {
 		nodeAPIError(w, r, err)
