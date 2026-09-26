@@ -25,11 +25,11 @@ func StartNodeJob(ctx context.Context, database *gorm.DB, client NodeJobStartCli
 	if job.Spec.Suspend == nil || job.ResourceVersion == "" {
 		return nil, ErrCoordinationChanged
 	}
-	if !*job.Spec.Suspend {
-		return job, nil
-	}
 	if job.Status.Succeeded > 0 || job.Status.Failed > 0 {
 		return nil, ErrCoordinationChanged
+	}
+	if !*job.Spec.Suspend {
+		return job, nil
 	}
 	err = changeNodeJob(database, r, func(tx *gorm.DB, store model.CleanupStorage, op model.CleanupOperation) error {
 		binding, err := readNodeBinding(r, op)

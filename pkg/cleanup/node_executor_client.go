@@ -1,6 +1,9 @@
 package cleanup
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // NodeExecutorLocator carries Pod locators only, not claimed runtime evidence.
 type NodeExecutorLocator = GCExecutorLocator
@@ -50,13 +53,23 @@ func (c *CoordinationClient) NodeJobProgress(ctx context.Context, r Coordination
 		return NodeJobProgress{}, err
 	}
 	result := response.Bean.NodeJob
-	if result == nil || result.StorageID != r.StorageID || result.Generation != r.Generation || result.OperationID != r.OperationID || result.Execution.Protocol != 1 || !validNodeJobIntent(r, result.Execution.NodeJobIntent) {
+	if result == nil {
+		return NodeJobProgress{}, ErrCoordinationChanged
+	}
+	intent := result.Execution.NodeJobIntent
+	if validCanceledNode(result.Execution) && result.Execution.JobUID == "" && intent.SpecHash == "" {
+		intent.SpecHash = strings.Repeat("0", 64)
+	}
+	if result.StorageID != r.StorageID || result.Generation != r.Generation || result.OperationID != r.OperationID || result.Execution.Protocol != 1 || !validNodeJobIntent(r, intent) {
 		return NodeJobProgress{}, ErrCoordinationChanged
 	}
 	if result.Execution.Result != nil && !validNodeResult(*result.Execution.Result) {
 		return NodeJobProgress{}, ErrCoordinationChanged
 	}
-	if result.State == "finished" && (result.Execution.Result == nil || result.Execution.FinishedAt == nil || result.Outcome != result.Execution.Result.State) {
+	if result.State == "finished" && !validCanceledNode(result.Execution) && (result.Execution.Result == nil || result.Execution.FinishedAt == nil || result.Outcome != result.Execution.Result.State) {
+		return NodeJobProgress{}, ErrCoordinationChanged
+	}
+	if result.Execution.CanceledBeforeGrantAt != nil && (result.State != "finished" || result.Outcome != "canceled" || !validCanceledNode(result.Execution)) {
 		return NodeJobProgress{}, ErrCoordinationChanged
 	}
 	return *result, nil

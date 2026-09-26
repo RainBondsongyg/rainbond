@@ -47,6 +47,10 @@ func (h *CleanupCoordinationHandler) inspectNodeExecution(ctx context.Context, r
 	return observed, err
 }
 func nodeAPIError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, guard.ErrNodeJobNotPrepared) {
+		httputil.ReturnError(r, w, 404, "NODE_JOB_NOT_PREPARED")
+		return
+	}
 	if errors.Is(err, kubeidentity.ErrExecutorRunning) {
 		err = guard.ErrCoordinationBusy
 	}

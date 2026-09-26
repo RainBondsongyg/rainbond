@@ -21,6 +21,7 @@ import (
 )
 
 // capability_id: rainbond.cleanup.node-job-launch-api
+// capability_id: rainbond.cleanup.node-cancel-before-grant
 func TestNodeLaunchAPIRechecksSourceBeforeStarting(t *testing.T) {
 	ctx := context.Background()
 	database, err := gorm.Open("sqlite3", filepath.Join(t.TempDir(), "launch.db"))
@@ -72,6 +73,7 @@ func TestNodeLaunchAPIRechecksSourceBeforeStarting(t *testing.T) {
 	t.Setenv("TOKEN", "isolated-launch-fixture")
 	router := chi.NewRouter()
 	router.Use(middleware.FullToken)
+	router.Post("/stores/{storage_id}/operations/{operation_id}/node/cancel-before-grant", h.CancelNodeBeforeGrant)
 	router.Post("/stores/{storage_id}/operations/{operation_id}/node/submit-job", h.SubmitNodeJob)
 	router.Post("/stores/{storage_id}/operations/{operation_id}/node/start-job", h.StartNodeJob)
 	endpoint := "/stores/" + request.StorageID + "/operations/" + request.OperationID + "/node/"
@@ -116,8 +118,23 @@ func TestNodeLaunchAPIRechecksSourceBeforeStarting(t *testing.T) {
 	if *job.Spec.Suspend {
 		t.Fatal("original Job not started")
 	}
+
+	if status := post("cancel-before-grant", body, false); status != 401 && status != 403 {
+		t.Fatal("unauthenticated cancellation", status)
+	}
 	stateName, err := guard.InspectOperation(database, request)
 	if err != nil || stateName != "active" {
 		t.Fatal("startup granted native deletion", stateName, err)
+	}
+
+	if status := post("cancel-before-grant", body, true); status != 200 {
+		t.Fatal("ungranted task cancellation failed", status)
+	}
+	if status := post("cancel-before-grant", body, true); status != 200 {
+		t.Fatal("lost cancellation response not reconciled", status)
+	}
+	progress, err := guard.ReadNodeJobProgress(database, request)
+	if err != nil || progress.Outcome != "canceled" || progress.Execution.Result != nil {
+		t.Fatal("cancellation invented native outcome", progress, err)
 	}
 }

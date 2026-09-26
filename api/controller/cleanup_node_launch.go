@@ -168,3 +168,27 @@ func (h *CleanupCoordinationHandler) validateNodeLaunchSource(ctx context.Contex
 	}
 	return nil
 }
+
+// CancelNodeBeforeGrant reconciles an original task that never obtained native
+// authority. Core's storage transaction, not caller claims, proves that fact.
+func (h *CleanupCoordinationHandler) CancelNodeBeforeGrant(w http.ResponseWriter, r *http.Request) {
+	var body NodeJobSelection
+	if !coordinationDecode(w, r, &body) || !coordinationScopeFromRoute(w, r, &body.CoordinationRequest) {
+		return
+	}
+	if h.gcTarget == nil {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	_, namespace, _, err := h.gcTarget()
+	if err != nil || namespace == "" {
+		coordinationError(w, r, guard.ErrCoordinationUnavailable)
+		return
+	}
+	intent := guard.NodeJobIntent{Namespace: namespace, NodeName: body.NodeName, NodeUID: body.NodeUID, Entry: body.Entry, Fingerprint: body.EntryFingerprint}
+	if err := guard.CancelNodeBeforeGrant(h.database(), body.CoordinationRequest, intent); err != nil {
+		nodeAPIError(w, r, err)
+		return
+	}
+	nodeRecorded(w, r)
+}

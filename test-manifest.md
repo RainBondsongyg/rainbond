@@ -68,6 +68,7 @@
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
 | rainbond.cleanup.market-slug-task-completion | Market slug task waits for completion before returning | active | regression | exectorManager.buildFromMarketSlug | builder/exector/cleanup_task_boundary_test.go::TestMarketSlugTaskWaitsForCompletion |
 | rainbond.cleanup.native-image-build-admission | Image builds hold durable cleanup admission through completion | active | regression | exectorManager.buildFromImage | builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays |
+| rainbond.cleanup.node-cancel-before-grant | Cancel only node operations without a native grant | active | regression | cleanup.CancelNodeBeforeGrant | pkg/cleanup/node_cancel_test.go::TestNodeCancellationCannotOverrideNativeAdmission<br>api/controller/cleanup_node_launch_test.go::TestNodeLaunchAPIRechecksSourceBeforeStarting |
 | rainbond.cleanup.node-candidate-readiness | Require idle coordinated storage before showing cache candidates | active | regression | cleanup.InspectManagedCacheReadiness | pkg/cleanup/node_readiness_test.go::TestNodeReadinessDoesNotIgnoreActiveOperations |
 | rainbond.cleanup.node-executor-admission | Admit exactly one observed node executor and verify its termination | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/enter-job | pkg/cleanup/node_execution_test.go::TestNodeExecutorAdmissionIsBoundAndSingleUse<br>pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeExecutorRequiresOriginalRuntimeNodeAndMount<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
 | rainbond.cleanup.node-job-intent | Persist immutable node execution identity before job creation | active | integration | PrepareNodeJob | pkg/cleanup/node_job_test.go::TestNodeJobIntentIsImmutableAndDoesNotGrantRecreation |
@@ -1202,6 +1203,16 @@
 - 业务入口: `exectorManager.buildFromImage`
 - 代码路径: `builder/exector/cleanup_image_admission.go`, `builder/exector/exector.go`, `pkg/cleanup/reference_mutation.go`
 - 测试路径: `builder/exector/cleanup_image_admission_test.go::TestImageBuildAdmissionBlocksGCAndNeverReplays`
+
+### Cancel only node operations without a native grant
+
+- Capability ID: `rainbond.cleanup.node-cancel-before-grant`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `cleanup.CancelNodeBeforeGrant`
+- 代码路径: `pkg/cleanup/node_cancel.go`, `api/controller/cleanup_node_launch.go`
+- 测试路径: `pkg/cleanup/node_cancel_test.go::TestNodeCancellationCannotOverrideNativeAdmission`, `api/controller/cleanup_node_launch_test.go::TestNodeLaunchAPIRechecksSourceBeforeStarting`
 
 ### Require idle coordinated storage before showing cache candidates
 

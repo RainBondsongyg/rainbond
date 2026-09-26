@@ -174,7 +174,7 @@ func ReadNodeJobProgress(database *gorm.DB, r CoordinationRequest) (NodeJobProgr
 	if err != nil {
 		return NodeJobProgress{}, err
 	}
-	if op.State == "finished" && (binding.FinishedAt == nil || binding.Result == nil || op.Outcome != binding.Result.State) {
+	if op.State == "finished" && !validCanceledNode(binding) && (binding.FinishedAt == nil || binding.Result == nil || op.Outcome != binding.Result.State) {
 		return NodeJobProgress{}, ErrCoordinationChanged
 	}
 	return NodeJobProgress{StorageID: r.StorageID, Generation: r.Generation, OperationID: r.OperationID, State: op.State, Outcome: op.Outcome, Execution: binding}, nil

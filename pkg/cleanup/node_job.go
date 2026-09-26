@@ -30,9 +30,10 @@ type NodeJobIntent struct {
 
 // NodeJobBinding records the immutable intent and observed executor identities.
 type NodeJobBinding struct {
-	Result     *NodeExecutionResult `json:"result,omitempty"`
-	FinishedAt *time.Time           `json:"finished_at,omitempty"`
-	Protocol   int                  `json:"protocol"`
+	CanceledBeforeGrantAt *time.Time           `json:"canceled_before_grant_at,omitempty"`
+	Result                *NodeExecutionResult `json:"result,omitempty"`
+	FinishedAt            *time.Time           `json:"finished_at,omitempty"`
+	Protocol              int                  `json:"protocol"`
 	NodeJobIntent
 	ContainerID string `json:"container_id"`
 	ImageID     string `json:"image_id"`
@@ -70,7 +71,20 @@ func readNodeBinding(r CoordinationRequest, op model.CleanupOperation) (NodeJobB
 	if op.NodeExecutionJSON == "" {
 		return binding, ErrNodeJobNotPrepared
 	}
-	if len(op.NodeExecutionJSON) > 8192 || json.Unmarshal([]byte(op.NodeExecutionJSON), &binding) != nil || binding.Protocol != 1 || !validNodeJobIntent(r, binding.NodeJobIntent) || (binding.JobUID != "" && !coordinationIdentity.MatchString(binding.JobUID)) {
+	if len(op.NodeExecutionJSON) > 8192 || json.Unmarshal([]byte(op.NodeExecutionJSON), &binding) != nil {
+		return NodeJobBinding{}, ErrCoordinationChanged
+	}
+	validated := binding.NodeJobIntent
+	if binding.CanceledBeforeGrantAt != nil {
+		if !validCanceledNode(binding) || op.State != "finished" || op.Outcome != "canceled" {
+			return NodeJobBinding{}, ErrCoordinationChanged
+		}
+		// No executor spec exists for cancellation before job preparation.
+		if binding.JobUID == "" && validated.SpecHash == "" {
+			validated.SpecHash = strings.Repeat("0", 64)
+		}
+	}
+	if binding.Protocol != 1 || !validNodeJobIntent(r, validated) || (binding.JobUID != "" && !coordinationIdentity.MatchString(binding.JobUID)) {
 		return NodeJobBinding{}, ErrCoordinationChanged
 	}
 	if (binding.PodName != "" || binding.PodUID != "" || binding.ContainerID != "" || binding.ImageID != "") && (binding.JobUID == "" || len(validation.IsDNS1123Subdomain(binding.PodName)) != 0 || !coordinationIdentity.MatchString(binding.PodUID) || binding.ContainerID == "" || len(binding.ContainerID) > 256 || binding.ImageID == "" || len(binding.ImageID) > 512) {
@@ -135,7 +149,7 @@ func PrepareNodeJob(database *gorm.DB, r CoordinationRequest, intent NodeJobInte
 			if err != nil {
 				return err
 			}
-			if previous.NodeJobIntent != intent {
+			if previous.CanceledBeforeGrantAt != nil || previous.NodeJobIntent != intent {
 				return ErrCoordinationChanged
 			}
 			return nil
@@ -169,7 +183,7 @@ func BindNodeJob(database *gorm.DB, r CoordinationRequest, intent NodeJobIntent,
 		if err != nil {
 			return err
 		}
-		if previous.NodeJobIntent != intent {
+		if previous.CanceledBeforeGrantAt != nil || previous.NodeJobIntent != intent {
 			return ErrCoordinationChanged
 		}
 		if previous.JobUID != "" {

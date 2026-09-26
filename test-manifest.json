@@ -1226,6 +1226,29 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-cancel-before-grant",
+      "title": "Cancel only node operations without a native grant",
+      "title_zh": "Cancel only node operations without a native grant",
+      "interface_type": "workflow",
+      "interface": "cleanup.CancelNodeBeforeGrant",
+      "code_paths": [
+        "pkg/cleanup/node_cancel.go",
+        "api/controller/cleanup_node_launch.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/node_cancel_test.go",
+          "selector": "TestNodeCancellationCannotOverrideNativeAdmission"
+        },
+        {
+          "path": "api/controller/cleanup_node_launch_test.go",
+          "selector": "TestNodeLaunchAPIRechecksSourceBeforeStarting"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.node-candidate-readiness",
       "title": "Require idle coordinated storage before showing cache candidates",
       "title_zh": "Require idle coordinated storage before showing cache candidates",
