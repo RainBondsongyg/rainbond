@@ -86,6 +86,7 @@
 | rainbond.cleanup.helm-native-mutation-admission | Coordinate native Helm mutations and track actual Kubernetes write outcomes | active | integration | helm.runCoordinatedMutation | pkg/helm/cleanup_mutation_test.go::TestHelmMutationRequiresDurableProducerAdmission<br>pkg/helm/cleanup_transport_test.go::TestHelmTracksActualReleaseStorageWrites<br>pkg/helm/cleanup_transport_test.go::TestHelmTransportKeepsUncertainWritesAndRejectsUnguardedWrites |
 | rainbond.cleanup.helm-release-identity | Keep bounded Helm release identity private to reference correlation | active | regression | cleanup.InspectHelmReleaseReferences | pkg/cleanup/helm_release_identity_test.go::TestHelmReleaseIdentityDoesNotExposeChartConfiguration |
 | rainbond.cleanup.helm-release-values-proof | Match desired Helm overrides to actual release config digests | active | regression | cleanup.HelmReleaseMatchesOverrides | pkg/cleanup/helm_release_identity_test.go::TestHelmReleaseOverridesRequireActualConfig |
+| rainbond.cleanup.helm-rendered-reference-compatibility | Preserve image references across rendered Helm supporting resources | active | regression | pkg/cleanup.InspectHelmReleaseReferences | pkg/cleanup/helm_references_test.go::TestHelmRenderedEmptyDocumentsDoNotHideWorkloadReferences<br>pkg/cleanup/helm_references_test.go::TestHelmStandardSupportingResourcesDoNotInventImageReferences<br>pkg/cleanup/helm_references_test.go::TestSavedMeshMetadataInjectionDoesNotInventAnImage |
 | rainbond.cleanup.helm-retained-reference-inventory | Protect retained Helm manifests and hooks without exposing Secret contents | active | integration | cleanup.InspectHelmReleaseReferences | pkg/cleanup/helm_references_test.go::TestHelmRetainedManifestAndHooksProvideReferencesOnly<br>pkg/cleanup/helm_references_test.go::TestHelmCorruptForeignAndUnknownReleasesAreNotEmptySuccess<br>pkg/cleanup/helm_references_test.go::TestHelmReferenceDecompressionIsBounded<br>pkg/cleanup/kubeidentity/helm_references_test.go::TestHelmInventoryReadsOnlyReleaseDataIncludingUnlabelledHistory |
 | rainbond.cleanup.helmapp-mutation-admission | Protect HelmApp create update and install intents during cleanup | active | regression | ApplicationAction.CreateApp | api/handler/cleanup_helmapp_test.go::TestHelmAppMutationsHoldCleanupAdmission |
 | rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
@@ -1492,6 +1493,16 @@
 - 业务入口: `cleanup.HelmReleaseMatchesOverrides`
 - 代码路径: `pkg/cleanup/helm_value_evidence.go`
 - 测试路径: `pkg/cleanup/helm_release_identity_test.go::TestHelmReleaseOverridesRequireActualConfig`
+
+### Preserve image references across rendered Helm supporting resources
+
+- Capability ID: `rainbond.cleanup.helm-rendered-reference-compatibility`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.InspectHelmReleaseReferences`
+- 代码路径: `pkg/cleanup/reference_workloads.go`, `pkg/cleanup/helm_references.go`
+- 测试路径: `pkg/cleanup/helm_references_test.go::TestHelmRenderedEmptyDocumentsDoNotHideWorkloadReferences`, `pkg/cleanup/helm_references_test.go::TestHelmStandardSupportingResourcesDoNotInventImageReferences`, `pkg/cleanup/helm_references_test.go::TestSavedMeshMetadataInjectionDoesNotInventAnImage`
 
 ### Protect retained Helm manifests and hooks without exposing Secret contents
 

@@ -20,15 +20,20 @@ func inspectSavedWorkload(content string, image func(string)) bool {
 		return false
 	}
 	decoder := utilyaml.NewYAMLOrJSONDecoder(strings.NewReader(content), 1024)
+	observed := false
 	for documents := 0; documents < 1000; documents++ {
 		var object map[string]interface{}
 		err := decoder.Decode(&object)
 		if err == io.EOF {
-			return documents > 0
+			return observed
+		}
+		if err == nil && object == nil {
+			continue // Helm emits comment-only documents for disabled resources.
 		}
 		if err != nil || len(object) == 0 || !inspectWorkloadObject(object, image, 0) {
 			return false
 		}
+		observed = true
 	}
 	return false
 }
@@ -50,11 +55,17 @@ func inspectWorkloadObject(object map[string]interface{}, image func(string), de
 		return true
 	}
 	validVersion := map[string]bool{"v1": true, "apps/v1": true, "batch/v1": true, "networking.k8s.io/v1": true, "rbac.authorization.k8s.io/v1": true, "policy/v1": true, "autoscaling/v1": true, "autoscaling/v2": true, "apiextensions.k8s.io/v1": true, "rainbond.io/v1alpha1": true}
+	for _, version := range []string{"storage.k8s.io/v1", "coordination.k8s.io/v1", "apiregistration.k8s.io/v1", "admissionregistration.k8s.io/v1", "policy/v1beta1", "autoscaling/v2beta2", "gateway.networking.k8s.io/v1beta1", "scheduling.k8s.io/v1"} {
+		validVersion[version] = true
+	}
 	if !validVersion[version] {
 		return false
 	}
 
 	expectedGroup := map[string]string{"Deployment": "apps", "StatefulSet": "apps", "DaemonSet": "apps", "ReplicaSet": "apps", "Job": "batch", "CronJob": "batch", "Ingress": "networking.k8s.io", "NetworkPolicy": "networking.k8s.io", "Role": "rbac.authorization.k8s.io", "RoleBinding": "rbac.authorization.k8s.io", "ClusterRole": "rbac.authorization.k8s.io", "ClusterRoleBinding": "rbac.authorization.k8s.io", "PodDisruptionBudget": "policy", "HorizontalPodAutoscaler": "autoscaling", "CustomResourceDefinition": "apiextensions.k8s.io", "RBDPlugin": "rainbond.io", "ServiceMesh": "rainbond.io"}
+	for kind, group := range map[string]string{"IngressClass": "networking.k8s.io", "StorageClass": "storage.k8s.io", "Lease": "coordination.k8s.io", "APIService": "apiregistration.k8s.io", "ValidatingWebhookConfiguration": "admissionregistration.k8s.io", "MutatingWebhookConfiguration": "admissionregistration.k8s.io", "Gateway": "gateway.networking.k8s.io", "PriorityClass": "scheduling.k8s.io", "ServiceMeshClass": "rainbond.io"} {
+		expectedGroup[kind] = group
+	}
 	if group != expectedGroup[kind] {
 		return false
 	}
@@ -73,6 +84,30 @@ func inspectWorkloadObject(object map[string]interface{}, image func(string), de
 	}
 	var fields []string
 	switch kind {
+	case "ServiceMeshClass":
+		for key := range object {
+			switch key {
+			case "apiVersion", "kind", "metadata", "description", "injectMethods":
+			default:
+				return false
+			}
+		}
+		methods, found, err := unstructured.NestedSlice(object, "injectMethods")
+		if err != nil || !found || len(methods) > 1000 {
+			return false
+		}
+		for _, item := range methods {
+			method, ok := item.(map[string]interface{})
+			if !ok || (method["method"] != "label" && method["method"] != "annotation") {
+				return false
+			}
+			for key := range method {
+				if key != "method" && key != "name" && key != "value" && key != "cover" {
+					return false
+				}
+			}
+		}
+		return true
 	case "ServiceMesh":
 		// Native governance uses the platform mesh/probe images collected by
 		// ReadPlatformHelperReferences, not an image field on this CR. Custom
@@ -97,6 +132,8 @@ func inspectWorkloadObject(object map[string]interface{}, image func(string), de
 	case "CronJob":
 		fields = []string{"spec", "jobTemplate", "spec", "template", "spec"}
 	case "Namespace", "Service", "Endpoints", "Secret", "ConfigMap", "Ingress", "PersistentVolumeClaim", "PersistentVolume", "ServiceAccount", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "NetworkPolicy", "ResourceQuota", "LimitRange", "PodDisruptionBudget", "HorizontalPodAutoscaler", "CustomResourceDefinition", "RBDPlugin":
+		return true
+	case "IngressClass", "StorageClass", "Lease", "APIService", "ValidatingWebhookConfiguration", "MutatingWebhookConfiguration", "Gateway", "PriorityClass":
 		return true
 	default:
 		return false

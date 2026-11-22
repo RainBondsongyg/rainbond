@@ -60,3 +60,59 @@ func TestHelmReferenceDecompressionIsBounded(t *testing.T) {
 		t.Fatal("oversized expanded record accepted")
 	}
 }
+
+func TestHelmRenderedEmptyDocumentsDoNotHideWorkloadReferences(t *testing.T) {
+	manifest := "---\n# disabled optional resource\n---\napiVersion: apps/v1\nkind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n      - image: goodrain.me/retained:v2\n---\n# disabled optional hook\n"
+	result := InspectHelmReleaseReferences(helmReferenceFixture(t, manifest, true), "app", "team", 2)
+	if !result.Complete || len(result.Images) != 2 {
+		t.Fatal("empty Helm documents blocked valid workload references", result.Complete, result.Images)
+	}
+	for _, content := range []string{"---\n# comments only\n---\n", "{}", "---\n{}\n"} {
+		if InspectHelmReleaseReferences(helmReferenceFixture(t, content, true), "app", "team", 2).Complete {
+			t.Fatalf("content without a Kubernetes object was accepted: %q", content)
+		}
+	}
+}
+
+func TestHelmStandardSupportingResourcesDoNotInventImageReferences(t *testing.T) {
+	for _, resource := range []struct{ version, kind string }{
+		{"networking.k8s.io/v1", "IngressClass"},
+		{"storage.k8s.io/v1", "StorageClass"},
+		{"coordination.k8s.io/v1", "Lease"},
+		{"apiregistration.k8s.io/v1", "APIService"},
+		{"admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration"},
+		{"admissionregistration.k8s.io/v1", "MutatingWebhookConfiguration"},
+		{"policy/v1beta1", "PodDisruptionBudget"},
+		{"autoscaling/v2beta2", "HorizontalPodAutoscaler"},
+		{"gateway.networking.k8s.io/v1beta1", "Gateway"},
+		{"scheduling.k8s.io/v1", "PriorityClass"},
+	} {
+		t.Run(resource.kind, func(t *testing.T) {
+			manifest := "apiVersion: " + resource.version + "\nkind: " + resource.kind + "\nmetadata:\n  name: supporting-resource\n"
+			result := InspectHelmReleaseReferences(helmReferenceFixture(t, manifest, true), "app", "team", 2)
+			if !result.Complete || len(result.Images) != 1 || result.Images[0] != "goodrain.me/hooks:v1" {
+				t.Fatal("standard supporting resource blocked the retained hook reference", result.Complete, result.Images)
+			}
+			foreign := strings.Replace(manifest, resource.version, "example.test/v1", 1)
+			if InspectHelmReleaseReferences(helmReferenceFixture(t, foreign, true), "app", "team", 2).Complete {
+				t.Fatal("foreign resource with a standard kind was ignored")
+			}
+		})
+	}
+}
+
+func TestSavedMeshMetadataInjectionDoesNotInventAnImage(t *testing.T) {
+	manifest := "apiVersion: rainbond.io/v1alpha1\nkind: ServiceMeshClass\ninjectMethods:\n- method: label\n  name: sidecar.istio.io/inject\n  value: 'true'\n  cover: true\n"
+	result := InspectHelmReleaseReferences(helmReferenceFixture(t, manifest, true), "app", "team", 2)
+	if !result.Complete || len(result.Images) != 1 {
+		t.Fatal("metadata-only mesh class blocked known hook references", result.Complete, result.Images)
+	}
+	for _, changed := range []string{
+		strings.Replace(manifest, "method: label", "method: container", 1),
+		manifest + "image: goodrain.me/unknown:v1\n",
+	} {
+		if InspectHelmReleaseReferences(helmReferenceFixture(t, changed, true), "app", "team", 2).Complete {
+			t.Fatal("unresolved mesh image injection was ignored")
+		}
+	}
+}

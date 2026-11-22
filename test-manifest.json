@@ -1614,6 +1614,33 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.helm-rendered-reference-compatibility",
+      "title": "Preserve image references across rendered Helm supporting resources",
+      "title_zh": "Preserve image references across rendered Helm supporting resources",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.InspectHelmReleaseReferences",
+      "code_paths": [
+        "pkg/cleanup/reference_workloads.go",
+        "pkg/cleanup/helm_references.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/helm_references_test.go",
+          "selector": "TestHelmRenderedEmptyDocumentsDoNotHideWorkloadReferences"
+        },
+        {
+          "path": "pkg/cleanup/helm_references_test.go",
+          "selector": "TestHelmStandardSupportingResourcesDoNotInventImageReferences"
+        },
+        {
+          "path": "pkg/cleanup/helm_references_test.go",
+          "selector": "TestSavedMeshMetadataInjectionDoesNotInventAnImage"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.helm-retained-reference-inventory",
       "title": "Protect retained Helm manifests and hooks without exposing Secret contents",
       "title_zh": "Protect retained Helm manifests and hooks without exposing Secret contents",
