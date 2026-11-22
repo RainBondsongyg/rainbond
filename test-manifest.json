@@ -2229,6 +2229,24 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.node-upload-executor",
+      "title": "Admit and finalize upload executors against the registered package volume",
+      "title_zh": "Admit and finalize upload executors against the registered package volume",
+      "interface_type": "package_function",
+      "interface": "kubeidentity.InspectNodeExecutor",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/node_executor.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/node_executor_test.go",
+          "selector": "TestNodeUploadExecutorBindsNarrowRootToPackageVolume"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.package-check-before-enqueue",
       "title": "Reserve package source checks before sending MQ messages",
       "title_zh": "Reserve package source checks before sending MQ messages",

@@ -116,6 +116,7 @@
 | rainbond.cleanup.node-recovery-submission | Reconcile original recovery Job after lost create response | active | regression | cleanup.SubmitSuspendedNodeRecovery | pkg/cleanup/node_recovery_test.go::TestRecoverySubmissionNeverRecreatesAfterLostResponse |
 | rainbond.cleanup.node-recovery-template | Build receipt recovery without cache access after verified executor exit | active | regression | kubeidentity.BuildNodeRecoveryJob | pkg/cleanup/kubeidentity/node_recovery_template_test.go::TestNodeRecoveryRequiresOriginalExitAndOmitsCacheVolume |
 | rainbond.cleanup.node-result-finalization | Finalize known original node results only after verified executor exit | active | integration | POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish | pkg/cleanup/node_result_test.go::TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor<br>pkg/cleanup/node_result_test.go::TestNodeResultRejectsInvalidFilesystemEvidence<br>api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce |
+| rainbond.cleanup.node-upload-executor | Admit and finalize upload executors against the registered package volume | active | regression | kubeidentity.InspectNodeExecutor | pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeUploadExecutorBindsNarrowRootToPackageVolume |
 | rainbond.cleanup.package-check-before-enqueue | Reserve package source checks before sending MQ messages | active | regression | ServiceAction.ServiceCheck | api/handler/cleanup_queued_tar_test.go::TestServiceCheckReservesOnlyUploadedPackageSources |
 | rainbond.cleanup.package-check-queue-classification | Classify native package checks consistently before enqueue and execution | active | regression | PackageCheckIdentity | pkg/cleanup/queued_check_test.go::TestPackageChecksUseSharedQueueClassification |
 | rainbond.cleanup.package-inventory-mount | Observe and bind read-only package inventory subtree independently of cache deletion | active | regression | BuildManagedCacheInventoryJob | pkg/cleanup/kubeidentity/package_inventory_template_test.go::TestPackageInventoryUsesObservedReadOnlySubtree |
@@ -1796,6 +1797,16 @@
 - 业务入口: `POST /v2/cleanup/stores/{storage_id}/operations/{operation_id}/node/finish`
 - 代码路径: `pkg/cleanup/node_result.go`, `api/controller/cleanup_node_executor.go`, `pkg/cleanup/node_executor_client.go`
 - 测试路径: `pkg/cleanup/node_result_test.go::TestNodeResultIsImmutableAndRequiresExitedOriginalExecutor`, `pkg/cleanup/node_result_test.go::TestNodeResultRejectsInvalidFilesystemEvidence`, `api/controller/cleanup_node_executor_test.go::TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce`
+
+### Admit and finalize upload executors against the registered package volume
+
+- Capability ID: `rainbond.cleanup.node-upload-executor`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `package_function`
+- 业务入口: `kubeidentity.InspectNodeExecutor`
+- 代码路径: `pkg/cleanup/kubeidentity/node_executor.go`
+- 测试路径: `pkg/cleanup/kubeidentity/node_executor_test.go::TestNodeUploadExecutorBindsNarrowRootToPackageVolume`
 
 ### Reserve package source checks before sending MQ messages
 

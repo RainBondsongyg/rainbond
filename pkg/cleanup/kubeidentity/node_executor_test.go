@@ -83,3 +83,54 @@ func TestNodeExecutorRequiresOriginalRuntimeNodeAndMount(t *testing.T) {
 		})
 	}
 }
+
+// capability_id: rainbond.cleanup.node-upload-executor
+func TestNodeUploadExecutorBindsNarrowRootToPackageVolume(t *testing.T) {
+	for _, kind := range []string{"upload_events", "upload_components"} {
+		for _, changed := range []bool{false, true} {
+			_, job, pod, pvc, pv, storage := gcExecutorObjects()
+			leaf, entry := "temp/events", "event"
+			if kind == "upload_components" {
+				leaf, entry = "components", "service/events/event"
+			}
+			storage.RootPath = "/grdata/package_build/" + leaf
+			storage.VolumeUID = volumeIdentity("pvc", "system", string(pvc.UID), string(pv.UID), "warehouse/package_build")
+			storage.StorageID = packageStorageID(storage.VolumeUID, kind)
+			container := &job.Spec.Template.Spec.Containers[0]
+			container.Command = []string{"/app/node-cleanup"}
+			container.VolumeMounts[0].MountPath = "/managed-root"
+			container.VolumeMounts[0].SubPath = "warehouse/package_build/" + leaf
+			if changed {
+				container.VolumeMounts[0].SubPath = "other/package_build/" + leaf
+			}
+			zero, one := int32(0), int32(1)
+			job.Spec.BackoffLimit, job.Spec.Parallelism, job.Spec.Completions = &zero, &one, &one
+			pod.Spec = *job.Spec.Template.Spec.DeepCopy()
+			intent := coordination.NodeJobIntent{Namespace: job.Namespace, Name: job.Name, NodeName: "node", NodeUID: "node-uid", Entry: entry, Fingerprint: strings.Repeat("b", 64)}
+			hash, err := coordination.NodeJobSpecHash(job, intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			intent.SpecHash = hash
+			binding := coordination.NodeJobBinding{Protocol: 1, NodeJobIntent: intent, JobUID: string(job.UID)}
+			node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node", UID: "node-uid"}}
+			client := fake.NewSimpleClientset(job, pod, pvc, pv, node)
+			observed, err := InspectNodeExecutor(context.Background(), client, job, pod.Name, string(pod.UID), storage, binding)
+			if changed {
+				if err == nil {
+					t.Fatal("different package volume accepted")
+				}
+				continue
+			}
+			if err != nil || observed.VolumeUID != storage.VolumeUID {
+				t.Fatal(kind, observed, err)
+			}
+			pod.Status.Phase = corev1.PodSucceeded
+			pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.Now()}}
+			client.CoreV1().Pods(pod.Namespace).Update(context.Background(), pod, metav1.UpdateOptions{})
+			if _, err := InspectTerminatedNodeExecutor(context.Background(), client, job, pod.Name, string(pod.UID), storage, binding); err != nil {
+				t.Fatal("package completion rejected", kind, err)
+			}
+		}
+	}
+}

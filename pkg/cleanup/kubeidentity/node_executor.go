@@ -29,8 +29,16 @@ func inspectNodeExecutor(ctx context.Context, client kubernetes.Interface, job *
 	if client == nil || job == nil || job.UID == "" || job.Namespace == "" || job.Spec.Suspend == nil || *job.Spec.Suspend || job.DeletionTimestamp != nil || podName == "" || podUID == "" {
 		return denied, ErrBinding
 	}
-	if coordination.ValidateBoundNodeJob(job, execution) != nil || binding.RootPath != "/cache/build" {
+	if coordination.ValidateBoundNodeJob(job, execution) != nil {
 		return denied, ErrBinding
+	}
+	kind := "cache"
+	if binding.RootPath != "/cache/build" {
+		var err error
+		kind, err = coordination.ManagedNodeStorageKind(binding)
+		if err != nil {
+			return denied, ErrBinding
+		}
 	}
 	if _, err := binding.Fingerprint(); err != nil {
 		return denied, ErrBinding
@@ -95,9 +103,22 @@ func inspectNodeExecutor(ctx context.Context, client kubernetes.Interface, job *
 	if execution.PodUID != "" && (execution.PodUID != podUID || execution.PodName != podName || execution.ContainerID != status.ContainerID || execution.ImageID != container.Image) {
 		return denied, ErrBinding
 	}
-	mount, relative, err := effectiveMount(container, binding.RootPath)
+	managedPath := "/cache/build"
+	if kind != "cache" {
+		managedPath = "/managed-root"
+	}
+	mount, relative, err := effectiveMount(container, managedPath)
 	if err != nil || mount.ReadOnly || mount.MountPropagation != nil && *mount.MountPropagation != corev1.MountPropagationNone {
 		return denied, ErrBinding
+	}
+	// Package storage is registered at package_build; executors mount only its
+	// events/components child. Compare the underlying registered parent volume.
+	if kind != "cache" {
+		suffix := strings.TrimPrefix(binding.RootPath, "/grdata/package_build/")
+		if relative != suffix && !strings.HasSuffix(relative, "/"+suffix) {
+			return denied, ErrBinding
+		}
+		relative = strings.TrimSuffix(strings.TrimSuffix(relative, suffix), "/")
 	}
 	observed, err := inspectVolume(ctx, client, pod, mount.Name, relative)
 	if err != nil || observed.VolumeUID != binding.VolumeUID {
