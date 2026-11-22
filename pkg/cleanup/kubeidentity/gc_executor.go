@@ -88,10 +88,11 @@ func inspectGCExecutor(ctx context.Context, client kubernetes.Interface, service
 		return denied, ErrBinding
 	}
 	running := pod.Status.Phase == corev1.PodRunning && status.State.Running != nil && status.State.Terminated == nil
+	exitPending := terminal && pod.Status.Phase == corev1.PodRunning && status.State.Running == nil && status.State.Terminated != nil && !status.State.Terminated.FinishedAt.IsZero()
 	if !terminal && !running && status.State.Terminated == nil && (pod.Status.Phase == corev1.PodPending || pod.Status.Phase == corev1.PodRunning) {
 		return denied, ErrExecutorStarting
 	}
-	if terminal && !running {
+	if terminal && !running && !exitPending {
 		if (pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed) || status.State.Terminated == nil || status.State.Running != nil || status.State.Terminated.FinishedAt.IsZero() {
 			return denied, ErrBinding
 		}
@@ -126,7 +127,7 @@ func inspectGCExecutor(ctx context.Context, client kubernetes.Interface, service
 	if err != nil || currentJob.UID != job.UID || currentJob.ResourceVersion != job.ResourceVersion {
 		return denied, ErrBinding
 	}
-	if terminal && running {
+	if terminal && (running || exitPending) {
 		return denied, ErrExecutorRunning
 	}
 	return observed, nil
