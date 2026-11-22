@@ -2899,6 +2899,47 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.retained-rainbond-component-images",
+      "title": "Protect retained Rainbond chart component images",
+      "title_zh": "Protect retained Rainbond chart component images",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.InspectHelmReleaseReferences",
+      "code_paths": [
+        "pkg/cleanup/reference_workloads.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/helm_references_test.go",
+          "selector": "TestRetainedRainbondChartProtectsDeclaredComponentImages"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.retired-package-producer-epoch",
+      "title": "Reconcile package producers after verified runtime replacement",
+      "title_zh": "Reconcile package producers after verified runtime replacement",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup.CertifyManagedPackageWriters",
+      "code_paths": [
+        "pkg/cleanup/package_certification.go",
+        "pkg/cleanup/producer_epoch.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/package_certification_test.go",
+          "selector": "TestManagedPackageReadinessReconcilesRetiredProducerEpoch"
+        },
+        {
+          "path": "pkg/cleanup/package_certification_test.go",
+          "selector": "TestManagedPackageEpochKeepsCurrentAndUnknownOperations"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.saved-workload-reference-coordination",
       "title": "Serialize saved workload reference writes with cleanup admission",
       "title_zh": "Serialize saved workload reference writes with cleanup admission",

@@ -63,7 +63,7 @@ func inspectWorkloadObject(object map[string]interface{}, image func(string), de
 	}
 
 	expectedGroup := map[string]string{"Deployment": "apps", "StatefulSet": "apps", "DaemonSet": "apps", "ReplicaSet": "apps", "Job": "batch", "CronJob": "batch", "Ingress": "networking.k8s.io", "NetworkPolicy": "networking.k8s.io", "Role": "rbac.authorization.k8s.io", "RoleBinding": "rbac.authorization.k8s.io", "ClusterRole": "rbac.authorization.k8s.io", "ClusterRoleBinding": "rbac.authorization.k8s.io", "PodDisruptionBudget": "policy", "HorizontalPodAutoscaler": "autoscaling", "CustomResourceDefinition": "apiextensions.k8s.io", "RBDPlugin": "rainbond.io", "ServiceMesh": "rainbond.io"}
-	for kind, group := range map[string]string{"IngressClass": "networking.k8s.io", "StorageClass": "storage.k8s.io", "Lease": "coordination.k8s.io", "APIService": "apiregistration.k8s.io", "ValidatingWebhookConfiguration": "admissionregistration.k8s.io", "MutatingWebhookConfiguration": "admissionregistration.k8s.io", "Gateway": "gateway.networking.k8s.io", "PriorityClass": "scheduling.k8s.io", "ServiceMeshClass": "rainbond.io"} {
+	for kind, group := range map[string]string{"IngressClass": "networking.k8s.io", "StorageClass": "storage.k8s.io", "Lease": "coordination.k8s.io", "APIService": "apiregistration.k8s.io", "ValidatingWebhookConfiguration": "admissionregistration.k8s.io", "MutatingWebhookConfiguration": "admissionregistration.k8s.io", "Gateway": "gateway.networking.k8s.io", "PriorityClass": "scheduling.k8s.io", "ServiceMeshClass": "rainbond.io", "RainbondCluster": "rainbond.io", "RbdComponent": "rainbond.io"} {
 		expectedGroup[kind] = group
 	}
 	if group != expectedGroup[kind] {
@@ -84,6 +84,29 @@ func inspectWorkloadObject(object map[string]interface{}, image func(string), de
 	}
 	var fields []string
 	switch kind {
+	case "RainbondCluster", "RbdComponent":
+		spec, found, err := unstructured.NestedMap(object, "spec")
+		if err != nil || !found {
+			return false
+		}
+		if kind == "RbdComponent" {
+			declared, ok := spec["image"].(string)
+			if !ok || declared == "" {
+				return false
+			}
+		} else if sentinel, found := spec["sentinelImage"]; found {
+			declared, ok := sentinel.(string)
+			if !ok {
+				return false
+			}
+			if declared != "" {
+				image(declared)
+			}
+		}
+		// Cluster repository/version values configure installation; the actual
+		// component images are retained in the companion RbdComponent objects.
+		visited := 0
+		return inspectCustomImageReferences(spec, image, 0, &visited)
 	case "ServiceMeshClass":
 		for key := range object {
 			switch key {

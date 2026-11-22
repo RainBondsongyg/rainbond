@@ -116,3 +116,35 @@ func TestSavedMeshMetadataInjectionDoesNotInventAnImage(t *testing.T) {
 		}
 	}
 }
+
+func TestRetainedRainbondChartProtectsDeclaredComponentImages(t *testing.T) {
+	manifest := `apiVersion: v1
+kind: List
+items:
+- apiVersion: rainbond.io/v1alpha1
+  kind: RainbondCluster
+  spec:
+    rainbondImageRepository: registry.example/platform
+    installVersion: retained
+    sentinelImage: registry.example/sentinel:retained
+- apiVersion: rainbond.io/v1alpha1
+  kind: RbdComponent
+  metadata:
+    name: rbd-api
+  spec:
+    image: registry.example/rbd-api:retained
+`
+	result := InspectHelmReleaseReferences(helmReferenceFixture(t, manifest, true), "app", "team", 2)
+	want := []string{"goodrain.me/hooks:v1", "registry.example/rbd-api:retained", "registry.example/sentinel:retained"}
+	if !result.Complete || strings.Join(result.Images, "\n") != strings.Join(want, "\n") {
+		t.Fatal("retained Rainbond component images were not protected", result.Complete, result.Images)
+	}
+	for _, invalid := range []string{
+		strings.Replace(manifest, "image: registry.example/rbd-api:retained", "image: ''", 1),
+		strings.ReplaceAll(manifest, "rainbond.io/v1alpha1", "example.test/v1"),
+	} {
+		if InspectHelmReleaseReferences(helmReferenceFixture(t, invalid, true), "app", "team", 2).Complete {
+			t.Fatal("invalid component reference was accepted")
+		}
+	}
+}

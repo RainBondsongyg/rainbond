@@ -156,3 +156,29 @@ func reconcileRetiredCacheProducerEpoch(tx *gorm.DB, binding StorageRegistration
 	}
 	return reconcileRetiredProducerOperations(tx, binding, cutoff, store)
 }
+
+// Package producers can outlive their old process in the journal. Reconcile
+// them only after every current, registered package writer has a newer epoch.
+// The caller first verifies upload guards and the absence of unfinished uses.
+func reconcileRetiredPackageProducerEpoch(tx *gorm.DB, binding StorageRegistration, writers []ReferenceWriter, store *model.CleanupStorage) (bool, error) {
+	kind, err := ManagedNodeStorageKind(binding)
+	if err != nil || (kind != "upload_events" && kind != "upload_components") || tx == nil || store == nil || len(writers) == 0 {
+		return false, ErrCoordinationChanged
+	}
+	cutoff := time.Time{}
+	for _, writer := range writers {
+		id, fingerprint, err := writer.identity()
+		if err != nil {
+			return false, err
+		}
+		var row model.CleanupReferenceWriter
+		if err := tx.Where("id = ?", id).First(&row).Error; err != nil {
+			return false, err
+		}
+		if row.Fingerprint != fingerprint || row.CreatedAt.IsZero() {
+			return false, ErrCoordinationChanged
+		}
+		cutoff = earlierEpoch(cutoff, row.CreatedAt)
+	}
+	return reconcileRetiredProducerOperations(tx, binding, cutoff, store)
+}

@@ -150,6 +150,8 @@
 | rainbond.cleanup.registry-stream-admission | Require admission before forwarding mutations without credential leakage | active | regression | pkg/cleanup/registryproxy.Proxy.ServeHTTP | pkg/cleanup/registryproxy/proxy_test.go::TestProxyAcquiresBeforeForwardingAndPreservesRegistryAuth |
 | rainbond.cleanup.registry-upload-lifecycle | Keep upload leases across parts and drain existing sessions safely | active | regression | pkg/cleanup.AcquireUploadRequest | pkg/cleanup/upload_coordination_test.go::TestUploadSessionRemainsProtectedBetweenParts |
 | rainbond.cleanup.restore-producer-transaction | Keep restore metadata and result publication in admitted transactions | active | integration | BackupAPPRestore.withMetadataWrite | builder/exector/cleanup_restore_admission_test.go::TestRestoreMetadataRetainsAdmissionAndRollsBackFailure |
+| rainbond.cleanup.retained-rainbond-component-images | Protect retained Rainbond chart component images | active | regression | pkg/cleanup.InspectHelmReleaseReferences | pkg/cleanup/helm_references_test.go::TestRetainedRainbondChartProtectsDeclaredComponentImages |
+| rainbond.cleanup.retired-package-producer-epoch | Reconcile package producers after verified runtime replacement | active | regression | pkg/cleanup.CertifyManagedPackageWriters | pkg/cleanup/package_certification_test.go::TestManagedPackageReadinessReconcilesRetiredProducerEpoch<br>pkg/cleanup/package_certification_test.go::TestManagedPackageEpochKeepsCurrentAndUnknownOperations |
 | rainbond.cleanup.saved-workload-reference-coordination | Serialize saved workload reference writes with cleanup admission | active | regression | K8sResourceDaoImpl | db/mysql/dao/k8s_resource_cleanup_test.go::TestSavedWorkloadWritesRespectCleanupAdmission |
 | rainbond.cleanup.service-mesh-mutation-admission | Protect ServiceMesh mutations until reference persistence is confirmed | active | regression | ApplicationAction.CreateServiceMeshCR | api/handler/cleanup_service_mesh_test.go::TestServiceMeshMutationsHoldCleanupAdmission |
 | rainbond.cleanup.service_check_import_handoff | Preserve imported image references across component creation | active | regression | CleanServiceCheckData | api/handler/service_check_cleanup_test.go::TestServiceCheckCreationCleanupPreservesImportReferences |
@@ -2133,6 +2135,26 @@
 - 业务入口: `BackupAPPRestore.withMetadataWrite`
 - 代码路径: `builder/exector/groupapp_restore.go`, `builder/exector/exector.go`
 - 测试路径: `builder/exector/cleanup_restore_admission_test.go::TestRestoreMetadataRetainsAdmissionAndRollsBackFailure`
+
+### Protect retained Rainbond chart component images
+
+- Capability ID: `rainbond.cleanup.retained-rainbond-component-images`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.InspectHelmReleaseReferences`
+- 代码路径: `pkg/cleanup/reference_workloads.go`
+- 测试路径: `pkg/cleanup/helm_references_test.go::TestRetainedRainbondChartProtectsDeclaredComponentImages`
+
+### Reconcile package producers after verified runtime replacement
+
+- Capability ID: `rainbond.cleanup.retired-package-producer-epoch`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup.CertifyManagedPackageWriters`
+- 代码路径: `pkg/cleanup/package_certification.go`, `pkg/cleanup/producer_epoch.go`
+- 测试路径: `pkg/cleanup/package_certification_test.go::TestManagedPackageReadinessReconcilesRetiredProducerEpoch`, `pkg/cleanup/package_certification_test.go::TestManagedPackageEpochKeepsCurrentAndUnknownOperations`
 
 ### Serialize saved workload reference writes with cleanup admission
 
