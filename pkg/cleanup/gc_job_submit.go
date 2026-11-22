@@ -161,9 +161,18 @@ func stripGCControllerFields(job *batchv1.Job) {
 }
 
 func gcSubmissionHash(job *batchv1.Job) (string, error) {
+	return helperSubmissionHash(job, false)
+}
+
+func observationSubmissionHash(job *batchv1.Job) (string, error) {
+	return helperSubmissionHash(job, true)
+}
+
+func helperSubmissionHash(job *batchv1.Job, readOnly bool) (string, error) {
 	spec := &job.Spec
 	pod := &spec.Template.Spec
-	if spec.BackoffLimit == nil || *spec.BackoffLimit != 0 || spec.Parallelism == nil || *spec.Parallelism != 1 || spec.Completions == nil || *spec.Completions != 1 || spec.TTLSecondsAfterFinished != nil || spec.ManualSelector != nil && *spec.ManualSelector || pod.RestartPolicy != corev1.RestartPolicyNever || pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken || pod.HostNetwork || pod.HostPID || pod.HostIPC || len(pod.Containers) != 1 {
+	invalidRetention := spec.TTLSecondsAfterFinished != nil && (!readOnly || *spec.TTLSecondsAfterFinished != 600)
+	if spec.BackoffLimit == nil || *spec.BackoffLimit != 0 || spec.Parallelism == nil || *spec.Parallelism != 1 || spec.Completions == nil || *spec.Completions != 1 || invalidRetention || spec.ManualSelector != nil && *spec.ManualSelector || pod.RestartPolicy != corev1.RestartPolicyNever || pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken || pod.HostNetwork || pod.HostPID || pod.HostIPC || len(pod.Containers) != 1 {
 		return "", ErrCoordinationChanged
 	}
 	for _, c := range append(append([]corev1.Container{}, pod.Containers...), pod.InitContainers...) {

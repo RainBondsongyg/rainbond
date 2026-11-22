@@ -158,6 +158,7 @@ func (h *CleanupCoordinationHandler) FinishNodeJob(w http.ResponseWriter, r *htt
 			nodeAPIError(w, r, guard.ErrCoordinationChanged)
 			return
 		}
+		h.scheduleFinishedHelperCleanup(r.Context(), progress.Execution.Namespace, progress.Execution.Name, progress.Execution.JobUID)
 		nodeRecorded(w, r)
 		return
 	}
@@ -170,6 +171,7 @@ func (h *CleanupCoordinationHandler) FinishNodeJob(w http.ResponseWriter, r *htt
 		nodeAPIError(w, r, err)
 		return
 	}
+	h.scheduleFinishedHelperCleanup(r.Context(), progress.Execution.Namespace, progress.Execution.Name, progress.Execution.JobUID)
 	nodeRecorded(w, r)
 }
 

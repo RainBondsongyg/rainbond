@@ -183,6 +183,10 @@ func TestGCJobAdmissionAPIRequiresVerifiedExecutorAndGrantsOnce(t *testing.T) {
 	if err := client.RestoreGCJob(context.Background(), r); err != nil {
 		t.Fatal("verified restoration failed", err)
 	}
+	finishedJob, err := kube.BatchV1().Jobs("system").Get(context.Background(), job.Name, metav1.GetOptions{})
+	if err != nil || finishedJob.Spec.TTLSecondsAfterFinished == nil || *finishedJob.Spec.TTLSecondsAfterFinished != 60 {
+		t.Fatal("restored GC did not schedule helper removal", err)
+	}
 	if err := kube.CoreV1().Pods("system").Delete(context.Background(), pod.Name, metav1.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}

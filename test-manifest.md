@@ -71,6 +71,7 @@
 | rainbond.cleanup.expired-upload-reinitialize | Start a new session instead of resuming expired chunk metadata | active | regression | controller.ChunkUploadManager.InitUploadSession | api/controller/chunk_upload_cleanup_test.go::TestExpiredUploadStartsNewSessionInsteadOfResumingRemovedChunks |
 | rainbond.cleanup.expired-upload-retirement | Retire original expired upload before one-shot chunk deletion and retain recovery evidence | active | regression | DeleteExpiredUploadChunks | pkg/cleanup/upload_retirement_test.go::TestExpiredUploadDeletionRetiresSessionAndDoesNotReplay<br>pkg/cleanup/upload_retirement_test.go::TestExpiredUploadDeletionRejectsChangedOrActiveEvidence<br>pkg/cleanup/upload_retirement_test.go::TestInterruptedUploadRetirementDoesNotReplayAfterRestart |
 | rainbond.cleanup.expired-upload-writes | Reject writes and completion on expired upload sessions | active | regression | controller.ChunkUploadManager.SaveChunk | api/controller/chunk_upload_cleanup_test.go::TestExpiredUploadCannotContinueWriting |
+| rainbond.cleanup.finished-helper-retention | Reclaim helpers after durable completion without adopting replacements | active | regression | api/controller.CleanupCoordinationHandler.scheduleFinishedHelperCleanup | api/controller/cleanup_job_retention_test.go::TestFinishedHelperRetentionKeepsReplacementJob |
 | rainbond.cleanup.gc-executor-command | Bind native GC command to the verified Job admission | active | regression | registry-gc.runGC | cmd/registry-gc/main_test.go::TestGCCommandValidatesBeforeExecutionAndSeparatesRecovery |
 | rainbond.cleanup.gc-executor-identity | Verify GC pod ownership image and physical volume | active | regression | kubeidentity.InspectGCExecutor | pkg/cleanup/kubeidentity/gc_executor_test.go::TestGCExecutorIdentityRejectsUntrustedPodAndStorage |
 | rainbond.cleanup.gc-executor-termination | Require actual original GC container termination and unchanged source | active | regression | kubeidentity.InspectTerminatedGCExecutor | pkg/cleanup/kubeidentity/gc_executor_test.go::TestTerminatedGCExecutorRequiresActualOriginalContainerExit<br>pkg/cleanup/kubeidentity/gc_job_template_test.go::TestGCSourceFingerprintDetectsRuntimeAndConfigurationChanges |
@@ -1345,6 +1346,16 @@
 - 业务入口: `controller.ChunkUploadManager.SaveChunk`
 - 代码路径: `api/controller/chunk_upload_manager.go`
 - 测试路径: `api/controller/chunk_upload_cleanup_test.go::TestExpiredUploadCannotContinueWriting`
+
+### Reclaim helpers after durable completion without adopting replacements
+
+- Capability ID: `rainbond.cleanup.finished-helper-retention`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `api/controller.CleanupCoordinationHandler.scheduleFinishedHelperCleanup`
+- 代码路径: `api/controller/cleanup_job_retention.go`, `api/controller/cleanup_node_executor.go`, `api/controller/cleanup_gc_restore.go`
+- 测试路径: `api/controller/cleanup_job_retention_test.go::TestFinishedHelperRetentionKeepsReplacementJob`
 
 ### Bind native GC command to the verified Job admission
 

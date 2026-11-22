@@ -17,7 +17,9 @@ func NodeRecoverySpecHash(job *batchv1.Job, parent NodeJobBinding) (string, erro
 	if job == nil || job.Name != NodeRecoveryName(parent) || job.Namespace != parent.Namespace {
 		return "", ErrCoordinationChanged
 	}
-	if _, err := NodeJobSpecHash(job, parent.NodeJobIntent); err != nil {
+	nativeShape := job.DeepCopy()
+	nativeShape.Spec.TTLSecondsAfterFinished = nil
+	if _, err := NodeJobSpecHash(nativeShape, parent.NodeJobIntent); err != nil {
 		return "", err
 	}
 	container := job.Spec.Template.Spec.Containers[0]
@@ -61,7 +63,7 @@ func NodeRecoverySpecHash(job *batchv1.Job, parent NodeJobBinding) (string, erro
 		}
 		return "", ErrCoordinationChanged
 	}
-	return gcSubmissionHash(job)
+	return observationSubmissionHash(job)
 }
 
 // SubmitSuspendedNodeRecovery persists recovery intent before its only Create.

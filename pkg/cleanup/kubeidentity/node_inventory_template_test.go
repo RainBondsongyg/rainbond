@@ -34,6 +34,9 @@ func TestCacheInventoryTemplateUsesObservedReadOnlyStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if job.Spec.TTLSecondsAfterFinished == nil || *job.Spec.TTLSecondsAfterFinished != 600 {
+		t.Fatal("read-only inventory job has no bounded retention")
+	}
 	spec := job.Spec.Template.Spec
 	c := spec.Containers[0]
 	if !*job.Spec.Suspend || spec.NodeName != "node" || *spec.AutomountServiceAccountToken || len(spec.Volumes) != 1 || len(c.VolumeMounts) != 1 || !c.VolumeMounts[0].ReadOnly || c.VolumeMounts[0].SubPath != "owned/build" || !spec.Volumes[0].PersistentVolumeClaim.ReadOnly {

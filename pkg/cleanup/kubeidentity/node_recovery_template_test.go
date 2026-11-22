@@ -51,6 +51,9 @@ func TestNodeRecoveryRequiresOriginalExitAndOmitsCacheVolume(t *testing.T) {
 	if recovery.UID != "" || !*recovery.Spec.Suspend || len(recovery.Spec.Template.Spec.Volumes) != 2 {
 		t.Fatal("unsafe recovery template")
 	}
+	if recovery.Spec.TTLSecondsAfterFinished == nil || *recovery.Spec.TTLSecondsAfterFinished != 600 {
+		t.Fatal("read-only recovery job has no bounded retention")
+	}
 	rc := recovery.Spec.Template.Spec.Containers[0]
 	if !strings.Contains(strings.Join(rc.Args, " "), "--recover --original-pod="+pod.Name+" --original-pod-uid="+string(pod.UID)) {
 		t.Fatal("original identity missing")

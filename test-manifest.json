@@ -1288,6 +1288,26 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.finished-helper-retention",
+      "title": "Reclaim helpers after durable completion without adopting replacements",
+      "title_zh": "Reclaim helpers after durable completion without adopting replacements",
+      "interface_type": "workflow",
+      "interface": "api/controller.CleanupCoordinationHandler.scheduleFinishedHelperCleanup",
+      "code_paths": [
+        "api/controller/cleanup_job_retention.go",
+        "api/controller/cleanup_node_executor.go",
+        "api/controller/cleanup_gc_restore.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_job_retention_test.go",
+          "selector": "TestFinishedHelperRetentionKeepsReplacementJob"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.gc-executor-command",
       "title": "Bind native GC command to the verified Job admission",
       "title_zh": "Bind native GC command to the verified Job admission",

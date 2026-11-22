@@ -166,6 +166,10 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	if err := client.FinishNodeJob(context.Background(), r, locator); err == nil {
 		t.Fatal("running helper released scope")
 	}
+	activeJob, err := kube.BatchV1().Jobs("system").Get(context.Background(), job.Name, metav1.GetOptions{})
+	if err != nil || activeJob.Spec.TTLSecondsAfterFinished != nil {
+		t.Fatal("unfinished execution was scheduled for removal", err)
+	}
 	pod.Status.Phase = corev1.PodSucceeded
 	pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(after.ObservedAt.Add(time.Second)), ExitCode: 0}}
 	if _, err := kube.CoreV1().Pods("system").Update(context.Background(), pod, metav1.UpdateOptions{}); err != nil {
@@ -199,6 +203,10 @@ func TestNodeAdmissionAPIUsesKubernetesFactsAndGrantsOnce(t *testing.T) {
 	}
 	if err := client.FinishNodeJob(context.Background(), r, locator); err != nil {
 		t.Fatal(err)
+	}
+	finishedJob, err := kube.BatchV1().Jobs("system").Get(context.Background(), job.Name, metav1.GetOptions{})
+	if err != nil || finishedJob.Spec.TTLSecondsAfterFinished == nil || *finishedJob.Spec.TTLSecondsAfterFinished != 60 {
+		t.Fatal("durable execution did not schedule helper removal", err)
 	}
 	progress, err := client.NodeJobProgress(context.Background(), r)
 	if err != nil || progress.State != "finished" || progress.Outcome != "deleted" || progress.Execution.Result.After.AvailableBytes != 100 {

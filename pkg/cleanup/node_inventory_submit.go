@@ -101,5 +101,5 @@ func inventoryJobHash(job *batchv1.Job) (string, error) {
 			return "", ErrCoordinationChanged
 		}
 	}
-	return gcSubmissionHash(job)
+	return observationSubmissionHash(job)
 }

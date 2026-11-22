@@ -89,6 +89,7 @@ func (h *CleanupCoordinationHandler) RestoreGCJob(w http.ResponseWriter, r *http
 			return
 		}
 	}
+	h.scheduleFinishedHelperCleanup(r.Context(), binding.Namespace, binding.Name, binding.JobUID)
 	httputil.ReturnSuccess(r, w, struct {
 		Protocol int  `json:"protocol"`
 		Recorded bool `json:"recorded"`
@@ -174,6 +175,7 @@ func (h *CleanupCoordinationHandler) CancelFailedGCJob(w http.ResponseWriter, r 
 		return
 	}
 	if progress.State == "finished" && progress.Outcome == "canceled" {
+		h.scheduleFinishedHelperCleanup(r.Context(), progress.JobNamespace, progress.JobName, progress.JobUID)
 		h.maintenanceTransitionResult(w, r)
 		return
 	}
@@ -205,6 +207,7 @@ func (h *CleanupCoordinationHandler) CancelFailedGCJob(w http.ResponseWriter, r 
 		coordinationError(w, r, err)
 		return
 	}
+	h.scheduleFinishedHelperCleanup(r.Context(), progress.JobNamespace, progress.JobName, progress.JobUID)
 	h.maintenanceTransitionResult(w, r)
 }
 func (h *CleanupCoordinationHandler) maintenanceTransitionResult(w http.ResponseWriter, r *http.Request) {

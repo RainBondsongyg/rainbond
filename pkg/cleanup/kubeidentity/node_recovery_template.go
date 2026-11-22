@@ -75,5 +75,6 @@ func BuildNodeRecoveryJob(ctx context.Context, client kubernetes.Interface, orig
 	container.StartupProbe = nil
 	spec.AutomountServiceAccountToken = &no
 	zero, one := int32(0), int32(1)
-	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: coordination.NodeRecoveryName(binding), Namespace: original.Namespace}, Spec: batchv1.JobSpec{Suspend: &yes, BackoffLimit: &zero, Parallelism: &one, Completions: &one, Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"rainbond.io/task": "node-recovery"}, Annotations: map[string]string{nodeJournalPVCUID: original.Spec.Template.Annotations[nodeJournalPVCUID], nodeJournalPVUID: original.Spec.Template.Annotations[nodeJournalPVUID]}}, Spec: *spec}}}, nil
+	retention := int32(600)
+	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: coordination.NodeRecoveryName(binding), Namespace: original.Namespace}, Spec: batchv1.JobSpec{TTLSecondsAfterFinished: &retention, Suspend: &yes, BackoffLimit: &zero, Parallelism: &one, Completions: &one, Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"rainbond.io/task": "node-recovery"}, Annotations: map[string]string{nodeJournalPVCUID: original.Spec.Template.Annotations[nodeJournalPVCUID], nodeJournalPVUID: original.Spec.Template.Annotations[nodeJournalPVUID]}}, Spec: *spec}}}, nil
 }
