@@ -138,4 +138,8 @@ func TestNodeLaunchAPIRechecksSourceBeforeStarting(t *testing.T) {
 	if err != nil || progress.Outcome != "canceled" || progress.Execution.Result != nil {
 		t.Fatal("cancellation invented native outcome", progress, err)
 	}
+	job, err = jobs.Get(ctx, binding.Name, metav1.GetOptions{})
+	if err != nil || job.Spec.TTLSecondsAfterFinished == nil || *job.Spec.TTLSecondsAfterFinished != 60 {
+		t.Fatal("canceled helper was not scheduled for cleanup", err)
+	}
 }

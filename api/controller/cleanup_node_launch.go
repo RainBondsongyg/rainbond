@@ -204,5 +204,8 @@ func (h *CleanupCoordinationHandler) CancelNodeBeforeGrant(w http.ResponseWriter
 		nodeAPIError(w, r, err)
 		return
 	}
+	if binding, err := guard.ReadNodeJobBinding(h.database(), body.CoordinationRequest); err == nil {
+		h.scheduleFinishedHelperCleanup(r.Context(), binding.Namespace, binding.Name, binding.JobUID)
+	}
 	nodeRecorded(w, r)
 }
