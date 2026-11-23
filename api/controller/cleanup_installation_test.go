@@ -37,7 +37,7 @@ func TestCleanupInstallationRequiresAnOwnedRegisteredPlugin(t *testing.T) {
 	database.Create(&model.Tenants{UUID: "tenant", EID: "enterprise", Namespace: "plugins", Name: "team"})
 	database.Create(&model.Application{AppID: "app", TenantID: "tenant", EID: "enterprise"})
 	client := fake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "system"}}, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "plugins"}})
-	plugin := &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "rainbond.io/v1alpha1", "kind": "RBDPlugin", "metadata": map[string]interface{}{"name": "rainbond-enterprise-base", "uid": "installed-plugin", "labels": map[string]interface{}{"app_id": "app"}}, "spec": map[string]interface{}{"namespace": "plugins", "backend_service": "http://base.plugins.svc:8080"}}}
+	plugin := &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "rainbond.io/v1alpha1", "kind": "RBDPlugin", "metadata": map[string]interface{}{"name": "rainbond-enterprise-base", "uid": "installed-plugin", "labels": map[string]interface{}{"app_id": "app"}}, "spec": map[string]interface{}{"namespace": "plugins", "backend_service": "base.plugins.svc:8080"}}}
 	resources := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), plugin)
 	h := &CleanupCoordinationHandler{database: func() *gorm.DB { return database }, installationTarget: func() (kubernetes.Interface, dynamic.Interface, string, error) {
 		return client, resources, "system", nil

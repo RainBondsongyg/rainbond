@@ -45,7 +45,7 @@ func ownedCleanupInstallation(ctx context.Context, client kubernetes.Interface, 
 	}
 	pluginNamespace, _, _ := unstructured.NestedString(plugin.Object, "spec", "namespace")
 	backend, _, _ := unstructured.NestedString(plugin.Object, "spec", "backend_service")
-	if plugin.GetDeletionTimestamp() != nil || string(plugin.GetUID()) != owner.PluginUID || plugin.GetLabels()["app_id"] != owner.AppID || pluginNamespace != scope.Namespace || backend != scope.BackendService {
+	if plugin.GetDeletionTimestamp() != nil || string(plugin.GetUID()) != owner.PluginUID || plugin.GetLabels()["app_id"] != owner.AppID || pluginNamespace != scope.Namespace || cleanupInstallationBackendAddress(backend) != scope.BackendService {
 		return nil, scope, kubeidentity.ErrBinding
 	}
 	return config, scope, nil

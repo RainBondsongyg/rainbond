@@ -57,7 +57,7 @@ func (h *CleanupCoordinationHandler) PrepareCleanupRegistryView(w http.ResponseW
 	}
 	pluginNamespace, _, _ := unstructured.NestedString(plugin.Object, "spec", "namespace")
 	backend, _, _ := unstructured.NestedString(plugin.Object, "spec", "backend_service")
-	if pluginNamespace != scope.Namespace || backend != scope.BackendService {
+	if pluginNamespace != scope.Namespace || cleanupInstallationBackendAddress(backend) != scope.BackendService {
 		httputil.ReturnError(r, w, http.StatusForbidden, "CLEANUP_INSTALLATION_OWNER_MISMATCH")
 		return
 	}

@@ -23,6 +23,13 @@ import (
 
 var cleanupPluginResource = schema.GroupVersionResource{Group: "rainbond.io", Version: "v1alpha1", Resource: "rbdplugins"}
 
+func cleanupInstallationBackendAddress(value string) string {
+	if !strings.Contains(value, "://") {
+		return "http://" + value
+	}
+	return value
+}
+
 type cleanupInstallationRequest struct {
 	Enterprise     string `json:"enterprise"`
 	Region         string `json:"region"`
@@ -138,6 +145,7 @@ func (h *CleanupCoordinationHandler) PrepareCleanupInstallation(w http.ResponseW
 		httputil.ReturnError(r, w, http.StatusBadRequest, "INVALID_CLEANUP_INSTALLATION")
 		return
 	}
+	backend = cleanupInstallationBackendAddress(backend)
 	consoleAddress, err := installationConsoleAddress(r.Context(), client, namespace, request)
 	if err != nil {
 		httputil.ReturnError(r, w, http.StatusBadRequest, "INVALID_CLEANUP_INSTALLATION")
