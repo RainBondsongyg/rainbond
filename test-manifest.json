@@ -1751,6 +1751,43 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.installation-api",
+      "title": "Prepare cleanup resources only for the registered enterprise plugin owner",
+      "title_zh": "Prepare cleanup resources only for the registered enterprise plugin owner",
+      "interface_type": "view_endpoint",
+      "interface": "POST /v2/cleanup/installations",
+      "code_paths": [
+        "api/controller/cleanup_installation.go",
+        "api/api_routers/version2/v2Routers.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_installation_test.go",
+          "selector": "TestCleanupInstallationRequiresAnOwnedRegisteredPlugin"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.installation-resources",
+      "title": "Create scoped cleanup installation resources and preserve existing credentials",
+      "title_zh": "Create scoped cleanup installation resources and preserve existing credentials",
+      "interface_type": "package_function",
+      "interface": "kubeidentity.EnsureInstallationResources",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/installation_prepare.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/installation_prepare_test.go",
+          "selector": "TestInstallationPreparesResourcesWithoutManualConfiguration"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.installed-node-settings",
       "title": "Resolve node cleanup executors from the installed plugin runtime and follow upgrades",
       "title_zh": "Resolve node cleanup executors from the installed plugin runtime and follow upgrades",
@@ -2264,6 +2301,26 @@
         }
       ],
       "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.node-state-provisioning",
+      "title": "Provision node-specific journals automatically and preserve them across plugin upgrades",
+      "title_zh": "Provision node-specific journals automatically and preserve them across plugin upgrades",
+      "interface_type": "package_function",
+      "interface": "kubeidentity.EnsureNodeStateClaim",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/node_state_claim.go",
+        "pkg/cleanup/kubeidentity/node_job_template.go",
+        "api/controller/cleanup_node_inventory.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/node_state_claim_test.go",
+          "selector": "TestNodeStateClaimsAreAutomaticallyProvisionedForTheirActualNodes"
+        }
+      ],
+      "test_type": "regression",
       "status": "active"
     },
     {

@@ -24,6 +24,8 @@ type NodeJobSettings struct {
 	Region, Image, Endpoint, CredentialSecret, StateClaim string
 	ConsoleEnterprise                                     string
 	AllowConsoleHTTP                                      bool
+	StatePerNode                                          bool
+	StateStorageClass                                     string
 }
 
 var nodeConsoleScope = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
@@ -31,6 +33,12 @@ var nodeConsoleScope = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 // BuildManagedNodeJob mounts the observed system builder cache and a separate
 // persistent journal. It constructs a suspended single-execution Job, not a grant.
 func BuildManagedNodeJob(ctx context.Context, client kubernetes.Interface, sourcePod, sourceUID string, binding coordination.StorageRegistration, request coordination.CoordinationRequest, intent coordination.NodeJobIntent, settings NodeJobSettings) (*batchv1.Job, error) {
+	stateSettings := settings
+	stateClaim, err := NodeStateClaimName(settings, intent.NodeUID)
+	if err != nil {
+		return nil, ErrBinding
+	}
+	settings.StateClaim = stateClaim
 	expected, err := coordination.ManagedNodeRequest(binding, request.Owner, request.OperationID, request.Fingerprint, intent)
 	if err != nil || expected != request || settings.Region == "" || len(settings.Region) > 63 || len(validation.IsDNS1123Subdomain(settings.CredentialSecret)) != 0 || len(validation.IsDNS1123Subdomain(settings.StateClaim)) != 0 {
 		return nil, ErrBinding
@@ -88,6 +96,11 @@ func BuildManagedNodeJob(ctx context.Context, client kubernetes.Interface, sourc
 	}
 	if data == nil {
 		return nil, ErrBinding
+	}
+	if settings.StatePerNode {
+		if _, err := EnsureNodeStateClaim(ctx, client, intent.Namespace, intent.NodeName, intent.NodeUID, stateSettings); err != nil {
+			return nil, err
+		}
 	}
 	state, err := client.CoreV1().PersistentVolumeClaims(intent.Namespace).Get(ctx, settings.StateClaim, metav1.GetOptions{})
 	if err != nil || state.UID == "" || state.DeletionTimestamp != nil || state.Status.Phase != corev1.ClaimBound || state.Spec.VolumeName == "" {

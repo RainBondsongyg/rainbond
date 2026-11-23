@@ -34,6 +34,7 @@ import (
 // This API records coordination only; it never performs deletion or enables an
 // unverified store. Owner identities come from trusted Region participants.
 type CleanupCoordinationHandler struct {
+	installationTarget      func() (kubernetes.Interface, dynamic.Interface, string, error)
 	uploadStorageBinding    func() (string, error)
 	deleteUploadChunks      func(string) error
 	uploadPackageReferences func(*gorm.DB, []string) (map[string]bool, error)
@@ -59,6 +60,7 @@ type CleanupCoordinationHandler struct {
 func NewCleanupCoordinationHandler() *CleanupCoordinationHandler {
 	h := &CleanupCoordinationHandler{uploadStorageBinding: systemUploadStorageBinding, deleteUploadChunks: systemDeleteUploadChunks, uploadPackageReferences: guard.ReadUploadPackageReferences, measureUploadChunks: systemMeasureUploadChunks, measureUploadEvent: systemMeasureUploadEvent, inspectReferenceWriters: inspectSystemReferenceWriters, inspectConsoleWriter: inspectSystemConsoleWriter, clusterReferences: systemClusterReferenceInventory, inventorySettings: systemNodeInventorySettings, nodeSettings: systemNodeJobSettings, database: func() *gorm.DB { return db.GetManager().DB() }, permitKey: systemRegistryPermitKey, inspectRegistry: inspectSystemRegistry, inspectManagedCache: inspectSystemManagedCache, inspectManagedPackages: inspectSystemManagedPackages, inspectPackageWriters: inspectSystemManagedPackageWriters, inspectParticipant: inspectSystemRegistryParticipant, gcTarget: systemRegistryInspectionTarget}
 	h.inspectRegistryCoverage = h.observeRegistryCoverage
+	h.installationTarget = systemCleanupInstallationTarget
 	return h
 }
 

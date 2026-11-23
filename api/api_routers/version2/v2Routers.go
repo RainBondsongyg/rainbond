@@ -883,6 +883,7 @@ func (v2 *V2) cleanupCoordinationRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.CleanupIdentity)
 	h := controller.NewCleanupCoordinationHandler()
+	r.Post("/installations", h.PrepareCleanupInstallation)
 	r.Post("/reference-writers/console", h.RegisterConsoleReferenceWriter)
 	r.Post("/uploads/inventory", h.UploadInventory)
 	r.Post("/uploads/chunks/delete", h.DeleteUploadChunks)

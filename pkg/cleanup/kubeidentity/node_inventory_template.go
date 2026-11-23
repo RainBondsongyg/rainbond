@@ -19,6 +19,9 @@ import (
 type NodeInventorySettings struct {
 	Region, Image, ScanID string
 	IncludePackages       bool
+	StateClaim            string
+	StatePerNode          bool
+	StateStorageClass     string
 }
 
 // BuildManagedCacheInventoryJob constructs a one-shot read-only cache collector.

@@ -28,15 +28,17 @@ var ErrInstallationNotConfigured = errors.New("disk cleanup installation is not 
 // InstallationScope is written by the platform installer. It contains resource
 // references only; credentials never belong in this ConfigMap.
 type InstallationScope struct {
-	Protocol         int    `json:"protocol"`
-	Enterprise       string `json:"enterprise"`
-	Region           string `json:"region"`
-	Namespace        string `json:"namespace"`
-	BackendService   string `json:"backendService"`
-	StateClaim       string `json:"stateClaim"`
-	CredentialSecret string `json:"credentialSecret"`
-	ConsoleURL       string `json:"consoleUrl"`
-	AllowHTTP        bool   `json:"allowHttp"`
+	Protocol          int    `json:"protocol"`
+	Enterprise        string `json:"enterprise"`
+	Region            string `json:"region"`
+	Namespace         string `json:"namespace"`
+	BackendService    string `json:"backendService"`
+	StateClaim        string `json:"stateClaim"`
+	CredentialSecret  string `json:"credentialSecret"`
+	ConsoleURL        string `json:"consoleUrl"`
+	AllowHTTP         bool   `json:"allowHttp"`
+	StatePerNode      bool   `json:"statePerNode,omitempty"`
+	StateStorageClass string `json:"stateStorageClass,omitempty"`
 }
 
 func installationBackend(scope InstallationScope) (string, error) {
@@ -154,5 +156,5 @@ func InstalledNodeSettings(ctx context.Context, client kubernetes.Interface, sys
 	if image == "" {
 		return denied, ErrExecutorStarting
 	}
-	return NodeJobSettings{Region: scope.Region, Image: image, Endpoint: scope.ConsoleURL, CredentialSecret: scope.CredentialSecret, StateClaim: scope.StateClaim, ConsoleEnterprise: scope.Enterprise, AllowConsoleHTTP: scope.AllowHTTP}, nil
+	return NodeJobSettings{Region: scope.Region, Image: image, Endpoint: scope.ConsoleURL, CredentialSecret: scope.CredentialSecret, StateClaim: scope.StateClaim, ConsoleEnterprise: scope.Enterprise, AllowConsoleHTTP: scope.AllowHTTP, StatePerNode: scope.StatePerNode, StateStorageClass: scope.StateStorageClass}, nil
 }

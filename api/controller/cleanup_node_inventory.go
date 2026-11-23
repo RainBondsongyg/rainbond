@@ -14,7 +14,7 @@ import (
 
 func systemNodeInventorySettings() kubeidentity.NodeInventorySettings {
 	settings, automatic := systemInstalledNodeSettings()
-	return kubeidentity.NodeInventorySettings{Region: settings.Region, Image: settings.Image, IncludePackages: automatic || os.Getenv("CLEANUP_NODE_PACKAGE_INVENTORY") == "true"}
+	return kubeidentity.NodeInventorySettings{Region: settings.Region, Image: settings.Image, IncludePackages: automatic || os.Getenv("CLEANUP_NODE_PACKAGE_INVENTORY") == "true", StateClaim: settings.StateClaim, StatePerNode: settings.StatePerNode, StateStorageClass: settings.StateStorageClass}
 }
 
 // CollectManagedCache starts an authenticated, manually requested inventory job.
@@ -53,6 +53,13 @@ func (h *CleanupCoordinationHandler) CollectManagedCache(w http.ResponseWriter, 
 	}
 	settings := h.inventorySettings()
 	settings.ScanID = body.ScanID
+	if settings.StatePerNode {
+		journal := kubeidentity.NodeJobSettings{StateClaim: settings.StateClaim, StatePerNode: true, StateStorageClass: settings.StateStorageClass}
+		if _, err := kubeidentity.EnsureNodeStateClaim(r.Context(), client, namespace, observed.Mount.NodeName, observed.NodeUID, journal); err != nil {
+			coordinationError(w, r, guard.ErrCoordinationUnavailable)
+			return
+		}
+	}
 	fresh := func() (*batchv1.Job, error) {
 		return kubeidentity.BuildManagedCacheInventoryJob(r.Context(), client, namespace, body.Pod, body.PodUID, binding, settings)
 	}
