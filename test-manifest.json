@@ -867,6 +867,26 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.automatic-node-settings",
+      "title": "Follow installed executor upgrades while preserving pre-migration explicit configuration",
+      "title_zh": "Follow installed executor upgrades while preserving pre-migration explicit configuration",
+      "interface_type": "workflow",
+      "interface": "controller.systemInstalledNodeSettings",
+      "code_paths": [
+        "api/controller/cleanup_installation_settings.go",
+        "api/controller/cleanup_node_inventory.go",
+        "api/controller/cleanup_node_launch.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_installation_settings_test.go",
+          "selector": "TestAutomaticNodeSettingsReplaceLegacyPinnedImageAfterInstallation"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.cache-builder-startup",
       "title": "Enroll actual cache writer before task consumption",
       "title_zh": "Enroll actual cache writer before task consumption",
@@ -1725,6 +1745,24 @@
         {
           "path": "pkg/cleanup/reference_handoff_test.go",
           "selector": "TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack"
+        }
+      ],
+      "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.installed-node-settings",
+      "title": "Resolve node cleanup executors from the installed plugin runtime and follow upgrades",
+      "title_zh": "Resolve node cleanup executors from the installed plugin runtime and follow upgrades",
+      "interface_type": "package_function",
+      "interface": "kubeidentity.InstalledNodeSettings",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/installation_settings.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/installation_settings_test.go",
+          "selector": "TestInstalledNodeSettingsFollowTheRunningPluginImage"
         }
       ],
       "test_type": "regression",

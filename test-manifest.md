@@ -50,6 +50,7 @@
 | rainbond.builder.source-type-compatibility | Normalize blank source build types without changing explicit protocols | active | regression | builder/exector.NewSouceCodeBuildItem | builder/exector/source_server_type_test.go::TestNewSourceBuildServerType |
 | rainbond.cleanup.activation-registry-coordination | Rollback and activation cannot reference deleting images | active | regression | cleanup.TrackServiceActivation | pkg/cleanup/activation_coordination_test.go::TestActivationAndRollbackRejectDeletingImage |
 | rainbond.cleanup.app-import-admission | Hold application import admission through metadata publication | active | integration | exector.exec.import_app | builder/exector/cleanup_import_admission_test.go::TestImportWorkerHoldsAdmissionUntilPublication<br>builder/exector/cleanup_import_admission_test.go::TestImportSuccessWaitsForMetadataUpload |
+| rainbond.cleanup.automatic-node-settings | Follow installed executor upgrades while preserving pre-migration explicit configuration | active | regression | controller.systemInstalledNodeSettings | api/controller/cleanup_installation_settings_test.go::TestAutomaticNodeSettingsReplaceLegacyPinnedImageAfterInstallation |
 | rainbond.cleanup.cache-builder-startup | Enroll actual cache writer before task consumption | active | integration | exector.registerCacheBuilderStartup | builder/exector/cleanup_cache_startup_test.go::TestCacheStartupRegistersActualInstanceWithoutEnablingDeletion |
 | rainbond.cleanup.cache-observation-before-readiness | Observe cache storage without enabling legacy writer deletion | active | regression | kubeidentity.InspectManagedBuildCacheSource | pkg/cleanup/kubeidentity/managed_cache_test.go::TestReadOnlyCacheEnrollmentDoesNotRequireDeletionReadiness |
 | rainbond.cleanup.cache-writer-certification | Certify cache readiness only with current membership and no writers | active | integration | cleanup.CertifyManagedCacheWriters | pkg/cleanup/cache_certification_test.go::TestCacheCertificationRequiresMembershipAndQuiescence |
@@ -91,6 +92,7 @@
 | rainbond.cleanup.helm-retained-reference-inventory | Protect retained Helm manifests and hooks without exposing Secret contents | active | integration | cleanup.InspectHelmReleaseReferences | pkg/cleanup/helm_references_test.go::TestHelmRetainedManifestAndHooksProvideReferencesOnly<br>pkg/cleanup/helm_references_test.go::TestHelmCorruptForeignAndUnknownReleasesAreNotEmptySuccess<br>pkg/cleanup/helm_references_test.go::TestHelmReferenceDecompressionIsBounded<br>pkg/cleanup/kubeidentity/helm_references_test.go::TestHelmInventoryReadsOnlyReleaseDataIncludingUnlabelledHistory |
 | rainbond.cleanup.helmapp-mutation-admission | Protect HelmApp create update and install intents during cleanup | active | regression | ApplicationAction.CreateApp | api/handler/cleanup_helmapp_test.go::TestHelmAppMutationsHoldCleanupAdmission |
 | rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
+| rainbond.cleanup.installed-node-settings | Resolve node cleanup executors from the installed plugin runtime and follow upgrades | active | regression | kubeidentity.InstalledNodeSettings | pkg/cleanup/kubeidentity/installation_settings_test.go::TestInstalledNodeSettingsFollowTheRunningPluginImage |
 | rainbond.cleanup.managed-cache-binding | Bind managed cache enrollment to observed system storage | active | integration | POST /v2/cleanup/managed-cache/prepare | pkg/cleanup/kubeidentity/managed_cache_test.go::TestManagedCachePreparationUsesActualNodeAndVolume<br>api/controller/cleanup_coordination_test.go::TestManagedCachePreparationDerivesIdentityAndNeverPromotesReady |
 | rainbond.cleanup.managed-package-binding | Managed package roots bind to observed grdata storage | active | regression | kubeidentity.InspectManagedPackageSource | pkg/cleanup/kubeidentity/managed_cache_test.go::TestManagedPackagePreparationUsesActualGrdataVolume<br>pkg/cleanup/registration_test.go::TestManagedPackageRegistrationsAreFixedDistinctAndNeverReady |
 | rainbond.cleanup.manual-gc-maintenance | Drain writes and require confirmed restoration around manual GC | active | regression | pkg/cleanup.RequestMaintenance | pkg/cleanup/maintenance_test.go::TestMaintenanceDrainsWritersAndRestoresOnlyAfterConfirmation |
@@ -1138,6 +1140,16 @@
 - 代码路径: `builder/exector/exector.go`, `builder/exector/import_app.go`, `builder/exector/cleanup_image_admission.go`
 - 测试路径: `builder/exector/cleanup_import_admission_test.go::TestImportWorkerHoldsAdmissionUntilPublication`, `builder/exector/cleanup_import_admission_test.go::TestImportSuccessWaitsForMetadataUpload`
 
+### Follow installed executor upgrades while preserving pre-migration explicit configuration
+
+- Capability ID: `rainbond.cleanup.automatic-node-settings`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `workflow`
+- 业务入口: `controller.systemInstalledNodeSettings`
+- 代码路径: `api/controller/cleanup_installation_settings.go`, `api/controller/cleanup_node_inventory.go`, `api/controller/cleanup_node_launch.go`
+- 测试路径: `api/controller/cleanup_installation_settings_test.go::TestAutomaticNodeSettingsReplaceLegacyPinnedImageAfterInstallation`
+
 ### Enroll actual cache writer before task consumption
 
 - Capability ID: `rainbond.cleanup.cache-builder-startup`
@@ -1547,6 +1559,16 @@
 - 业务入口: `TransferImportedReferencesToVersions`
 - 代码路径: `pkg/cleanup/reference_handoff.go`, `pkg/cleanup/reference_import.go`, `db/mysql/dao/version.go`
 - 测试路径: `pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack`
+
+### Resolve node cleanup executors from the installed plugin runtime and follow upgrades
+
+- Capability ID: `rainbond.cleanup.installed-node-settings`
+- 状态: `active`
+- 测试类型: `regression`
+- 接口类型: `package_function`
+- 业务入口: `kubeidentity.InstalledNodeSettings`
+- 代码路径: `pkg/cleanup/kubeidentity/installation_settings.go`
+- 测试路径: `pkg/cleanup/kubeidentity/installation_settings_test.go::TestInstalledNodeSettingsFollowTheRunningPluginImage`
 
 ### Bind managed cache enrollment to observed system storage
 
