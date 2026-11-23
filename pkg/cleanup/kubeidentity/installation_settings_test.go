@@ -33,9 +33,16 @@ func TestInstalledNodeSettingsFollowTheRunningPluginImage(t *testing.T) {
 	}
 	pod.Status.ContainerStatuses[0].ImageID = "different.example/foreign@sha256:" + strings.Repeat("b", 64)
 	client.CoreV1().Pods("plugins").Update(ctx, pod, metav1.UpdateOptions{})
-	if _, err := InstalledNodeSettings(ctx, client, "system"); err == nil {
-		t.Fatal("foreign runtime image accepted")
+	settings, err = InstalledNodeSettings(ctx, client, "system")
+	if err != nil || settings.Image != "images.example/base@sha256:"+strings.Repeat("b", 64) {
+		t.Fatal("containerd's original repository alias prevented a retagged plugin from initializing", err)
 	}
+	pod.Spec.Containers[0].Image = "images.example/base@sha256:" + strings.Repeat("a", 64)
+	client.CoreV1().Pods("plugins").Update(ctx, pod, metav1.UpdateOptions{})
+	if _, err := InstalledNodeSettings(ctx, client, "system"); err == nil {
+		t.Fatal("a different digest bypassed a pinned image")
+	}
+	pod.Spec.Containers[0].Image = "images.example/base:two"
 	pod.Status.ContainerStatuses[0].ImageID = "containerd://sha256:" + strings.Repeat("b", 64)
 	client.CoreV1().Pods("plugins").Update(ctx, pod, metav1.UpdateOptions{})
 	replica := pod.DeepCopy()

@@ -78,13 +78,16 @@ func installedRuntimeImage(container corev1.Container, status corev1.ContainerSt
 		imageDigest = digest.Digest(actual)
 	} else {
 		observed, err := reference.ParseNormalizedNamed(actual)
-		if err != nil || reference.TrimNamed(observed).Name() != reference.TrimNamed(declared).Name() {
+		if err != nil {
 			return "", ErrBinding
 		}
 		pinned, ok := observed.(reference.Canonical)
 		if !ok {
 			return "", ErrBinding
 		}
+		// CRI may report the original repository after Rainbond retags the same
+		// manifest. The observed digest identifies its content; keep the declared
+		// repository so system jobs use the platform's normal pull credentials.
 		imageDigest = pinned.Digest()
 	}
 	if imageDigest.Algorithm() != digest.SHA256 || imageDigest.Validate() != nil {
