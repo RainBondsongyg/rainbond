@@ -1770,6 +1770,78 @@
       "status": "active"
     },
     {
+      "id": "rainbond.cleanup.installation-coordinator",
+      "title": "Install coordinator and adopt existing storage identity",
+      "title_zh": "Install coordinator and adopt existing storage identity",
+      "interface_type": "workflow",
+      "interface": "api/controller/cleanup_installation_reconcile.go",
+      "code_paths": [
+        "api/controller/cleanup_installation_reconcile.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_installation_reconcile_test.go",
+          "selector": "TestInstallationCoordinatorAdoptsOwnedConfigurationAndDisablesLegacyCleaners"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.installation-registry-auth",
+      "title": "Target Registry authentication projection",
+      "title_zh": "Target Registry authentication projection",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/kubeidentity/installation_registry_auth.go",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/installation_registry_auth.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/installation_registry_auth_test.go",
+          "selector": "TestInstallationProjectsTargetRegistryCredentialsWithoutReturningThem"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.installation-registry-mount",
+      "title": "Read-only target Registry storage projection",
+      "title_zh": "Read-only target Registry storage projection",
+      "interface_type": "workflow",
+      "interface": "pkg/cleanup/kubeidentity/installation_registry_mount.go",
+      "code_paths": [
+        "pkg/cleanup/kubeidentity/installation_registry_mount.go"
+      ],
+      "tests": [
+        {
+          "path": "pkg/cleanup/kubeidentity/installation_registry_mount_test.go",
+          "selector": "TestInstallationMirrorsOnlyTheObservedRegistryVolumeReadOnly"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.installation-registry-view",
+      "title": "Owned installation Registry view",
+      "title_zh": "Owned installation Registry view",
+      "interface_type": "workflow",
+      "interface": "api/controller/cleanup_installation_registry_view.go",
+      "code_paths": [
+        "api/controller/cleanup_installation_registry_view.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_installation_registry_view_test.go",
+          "selector": "TestInstallationRegistryViewUsesOwnedTargetResources"
+        }
+      ],
+      "test_type": "integration",
+      "status": "active"
+    },
+    {
       "id": "rainbond.cleanup.installation-resources",
       "title": "Create scoped cleanup installation resources and preserve existing credentials",
       "title_zh": "Create scoped cleanup installation resources and preserve existing credentials",
@@ -3251,6 +3323,24 @@
         }
       ],
       "test_type": "regression",
+      "status": "active"
+    },
+    {
+      "id": "rainbond.cleanup.system-identity-verification",
+      "title": "Verify platform callbacks without exposing signing keys",
+      "title_zh": "Verify platform callbacks without exposing signing keys",
+      "interface_type": "workflow",
+      "interface": "api/controller/cleanup_system_identity.go",
+      "code_paths": [
+        "api/controller/cleanup_system_identity.go"
+      ],
+      "tests": [
+        {
+          "path": "api/controller/cleanup_system_identity_test.go",
+          "selector": "TestSystemIdentityVerificationDoesNotReturnItsCredential"
+        }
+      ],
+      "test_type": "integration",
       "status": "active"
     },
     {

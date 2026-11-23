@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	httputil "github.com/goodrain/rainbond/util/http"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -22,11 +24,34 @@ import (
 var cleanupPluginResource = schema.GroupVersionResource{Group: "rainbond.io", Version: "v1alpha1", Resource: "rbdplugins"}
 
 type cleanupInstallationRequest struct {
-	Enterprise string `json:"enterprise"`
-	Region     string `json:"region"`
-	PluginID   string `json:"plugin_id"`
-	AppID      string `json:"app_id"`
-	ConsoleURL string `json:"console_url"`
+	Enterprise     string `json:"enterprise"`
+	Region         string `json:"region"`
+	PluginID       string `json:"plugin_id"`
+	AppID          string `json:"app_id"`
+	ConsoleURL     string `json:"console_url"`
+	ConsolePodName string `json:"console_pod_name,omitempty"`
+	ConsolePodUID  string `json:"console_pod_uid,omitempty"`
+}
+
+func installationConsoleAddress(ctx context.Context, client kubernetes.Interface, namespace string, request cleanupInstallationRequest) (string, error) {
+	if request.ConsolePodName != "" && request.ConsolePodUID != "" {
+		pod, err := client.CoreV1().Pods(namespace).Get(ctx, request.ConsolePodName, metav1.GetOptions{})
+		if err == nil && string(pod.UID) == request.ConsolePodUID && pod.DeletionTimestamp == nil && pod.Labels["name"] == "rbd-app-ui" {
+			service, err := client.CoreV1().Services(namespace).Get(ctx, "rbd-app-ui", metav1.GetOptions{})
+			if err == nil && service.DeletionTimestamp == nil && len(service.Spec.Selector) > 0 && labels.SelectorFromSet(service.Spec.Selector).Matches(labels.Set(pod.Labels)) {
+				for _, port := range service.Spec.Ports {
+					if port.Port == 7070 {
+						return fmt.Sprintf("http://rbd-app-ui.%s.svc.cluster.local:%d", namespace, port.Port), nil
+					}
+				}
+			}
+		}
+	}
+	origin, err := url.Parse(request.ConsoleURL)
+	if err != nil || origin.Host == "" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") || (origin.Scheme != "http" && origin.Scheme != "https") {
+		return "", kubeidentity.ErrBinding
+	}
+	return request.ConsoleURL, nil
 }
 
 func systemCleanupInstallationTarget() (kubernetes.Interface, dynamic.Interface, string, error) {
@@ -113,12 +138,13 @@ func (h *CleanupCoordinationHandler) PrepareCleanupInstallation(w http.ResponseW
 		httputil.ReturnError(r, w, http.StatusBadRequest, "INVALID_CLEANUP_INSTALLATION")
 		return
 	}
-	console, err := url.Parse(request.ConsoleURL)
+	consoleAddress, err := installationConsoleAddress(r.Context(), client, namespace, request)
 	if err != nil {
 		httputil.ReturnError(r, w, http.StatusBadRequest, "INVALID_CLEANUP_INSTALLATION")
 		return
 	}
-	scope := kubeidentity.InstallationScope{Protocol: 1, Enterprise: request.Enterprise, Region: request.Region, Namespace: pluginNamespace, BackendService: backend, ConsoleURL: request.ConsoleURL, AllowHTTP: console.Scheme == "http", StatePerNode: true, StateStorageClass: installationStorageClass(r.Context(), client, namespace)}
+	console, _ := url.Parse(consoleAddress)
+	scope := kubeidentity.InstallationScope{Protocol: 1, Enterprise: request.Enterprise, Region: request.Region, Namespace: pluginNamespace, BackendService: backend, ConsoleURL: consoleAddress, AllowHTTP: console.Scheme == "http", StatePerNode: true, StateStorageClass: installationStorageClass(r.Context(), client, namespace)}
 	prepared, err := kubeidentity.EnsureInstallationResources(r.Context(), client, namespace, scope)
 	if err != nil {
 		httputil.ReturnError(r, w, http.StatusServiceUnavailable, "CLEANUP_INSTALLATION_PREPARING")

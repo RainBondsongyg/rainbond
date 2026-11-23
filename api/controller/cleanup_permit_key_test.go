@@ -2,9 +2,15 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/goodrain/rainbond/pkg/cleanup/kubeidentity"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // capability_id: rainbond.cleanup.registry-permit-key-separation
@@ -35,5 +41,22 @@ func TestRegistryPermitKeyUsesDedicatedFileAndNeverFallsBackOnFailure(t *testing
 	t.Setenv("CLEANUP_REGISTRY_PERMIT_KEY_FILE", path+".missing")
 	if len(systemRegistryPermitKey()) != 0 {
 		t.Fatal("missing configured key fell back")
+	}
+}
+
+func TestManagedPermitKeyUsesClusterReferenceWithoutAPIMounts(t *testing.T) {
+	ctx := context.Background()
+	client := fake.NewSimpleClientset()
+	if _, configured := managedRegistryPermitKey(ctx, client, "system"); configured {
+		t.Fatal("legacy installation was forced into managed mode")
+	}
+	client.CoreV1().ConfigMaps("system").Create(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: kubeidentity.InstallationConfigName, Namespace: "system"}, Data: map[string]string{"permit-secret": "permit"}}, metav1.CreateOptions{})
+	if key, configured := managedRegistryPermitKey(ctx, client, "system"); !configured || len(key) != 0 {
+		t.Fatal("missing managed key allowed a legacy fallback")
+	}
+	wanted := bytes.Repeat([]byte("public-fixture"), 4)
+	client.CoreV1().Secrets("system").Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "permit", Namespace: "system"}, Data: map[string][]byte{"key": wanted}}, metav1.CreateOptions{})
+	if key, configured := managedRegistryPermitKey(ctx, client, "system"); !configured || !bytes.Equal(key, wanted) {
+		t.Fatal("managed key did not resolve")
 	}
 }

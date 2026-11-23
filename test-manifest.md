@@ -93,6 +93,10 @@
 | rainbond.cleanup.helmapp-mutation-admission | Protect HelmApp create update and install intents during cleanup | active | regression | ApplicationAction.CreateApp | api/handler/cleanup_helmapp_test.go::TestHelmAppMutationsHoldCleanupAdmission |
 | rainbond.cleanup.import_reference_handoff | Atomically hand import references to successful versions | active | regression | TransferImportedReferencesToVersions | pkg/cleanup/reference_handoff_test.go::TestImportHandoffWaitsForEverySuccessfulVersionAndRollsBack |
 | rainbond.cleanup.installation-api | Prepare cleanup resources only for the registered enterprise plugin owner | active | integration | POST /v2/cleanup/installations | api/controller/cleanup_installation_test.go::TestCleanupInstallationRequiresAnOwnedRegisteredPlugin |
+| rainbond.cleanup.installation-coordinator | Install coordinator and adopt existing storage identity | active | integration | api/controller/cleanup_installation_reconcile.go | api/controller/cleanup_installation_reconcile_test.go::TestInstallationCoordinatorAdoptsOwnedConfigurationAndDisablesLegacyCleaners |
+| rainbond.cleanup.installation-registry-auth | Target Registry authentication projection | active | integration | pkg/cleanup/kubeidentity/installation_registry_auth.go | pkg/cleanup/kubeidentity/installation_registry_auth_test.go::TestInstallationProjectsTargetRegistryCredentialsWithoutReturningThem |
+| rainbond.cleanup.installation-registry-mount | Read-only target Registry storage projection | active | integration | pkg/cleanup/kubeidentity/installation_registry_mount.go | pkg/cleanup/kubeidentity/installation_registry_mount_test.go::TestInstallationMirrorsOnlyTheObservedRegistryVolumeReadOnly |
+| rainbond.cleanup.installation-registry-view | Owned installation Registry view | active | integration | api/controller/cleanup_installation_registry_view.go | api/controller/cleanup_installation_registry_view_test.go::TestInstallationRegistryViewUsesOwnedTargetResources |
 | rainbond.cleanup.installation-resources | Create scoped cleanup installation resources and preserve existing credentials | active | regression | kubeidentity.EnsureInstallationResources | pkg/cleanup/kubeidentity/installation_prepare_test.go::TestInstallationPreparesResourcesWithoutManualConfiguration |
 | rainbond.cleanup.installed-node-settings | Resolve node cleanup executors from the installed plugin runtime and follow upgrades | active | regression | kubeidentity.InstalledNodeSettings | pkg/cleanup/kubeidentity/installation_settings_test.go::TestInstalledNodeSettingsFollowTheRunningPluginImage |
 | rainbond.cleanup.managed-cache-binding | Bind managed cache enrollment to observed system storage | active | integration | POST /v2/cleanup/managed-cache/prepare | pkg/cleanup/kubeidentity/managed_cache_test.go::TestManagedCachePreparationUsesActualNodeAndVolume<br>api/controller/cleanup_coordination_test.go::TestManagedCachePreparationDerivesIdentityAndNeverPromotesReady |
@@ -169,6 +173,7 @@
 | rainbond.cleanup.sqlite-version-store | SQLite version selection inspection and retirement | active | regression | pkg/cleanup.SelectRollbackVersion | pkg/cleanup/store_sqlite_test.go::TestVersionStoreSupportsSQLite |
 | rainbond.cleanup.storage-enrollment | Collect writes during enrollment without granting cleanup | active | regression | pkg/cleanup.RegisterStorage | pkg/cleanup/registration_test.go::TestStorageRegistrationCollectsWritesWithoutEnablingDeletion |
 | rainbond.cleanup.storage-identity | Bind storage identity atomically without replacing prior markers | active | regression | pkg/cleanup/registryproxy.InitializeStorageIdentity | pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten |
+| rainbond.cleanup.system-identity-verification | Verify platform callbacks without exposing signing keys | active | integration | api/controller/cleanup_system_identity.go | api/controller/cleanup_system_identity_test.go::TestSystemIdentityVerificationDoesNotReturnItsCredential |
 | rainbond.cleanup.tar-admission-before-enqueue | Persist exact tar task reservation before MQ and retain unknown outcome | active | regression | TarImageHandle.LoadTarImage | api/handler/cleanup_queued_tar_test.go::TestTarAPIReservesBeforeEnqueueAndRetainsLostAcknowledgement |
 | rainbond.cleanup.tar-check-event-path | Restrict tar check input to event directory identifiers | active | regression | parser.TarImageEventID | builder/parser/tar_event_test.go::TestTarImageEventIDRejectsTraversalAndMalformedSources |
 | rainbond.cleanup.tar-image-admission | Fence tar image import through native work and result persistence | active | regression | exector.loadTarImage | builder/exector/cleanup_tar_admission_test.go::TestTarImportAdmissionCoversWorkAndResultPersistence<br>builder/exector/cleanup_tar_admission_test.go::TestTarImportUnknownOutcomeRetainsProtection<br>builder/exector/cleanup_tar_admission_test.go::TestTarImportInvalidIdentityStopsBeforeFilesystemOrDatabase |
@@ -1573,6 +1578,46 @@
 - 代码路径: `api/controller/cleanup_installation.go`, `api/api_routers/version2/v2Routers.go`
 - 测试路径: `api/controller/cleanup_installation_test.go::TestCleanupInstallationRequiresAnOwnedRegisteredPlugin`
 
+### Install coordinator and adopt existing storage identity
+
+- Capability ID: `rainbond.cleanup.installation-coordinator`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `api/controller/cleanup_installation_reconcile.go`
+- 代码路径: `api/controller/cleanup_installation_reconcile.go`
+- 测试路径: `api/controller/cleanup_installation_reconcile_test.go::TestInstallationCoordinatorAdoptsOwnedConfigurationAndDisablesLegacyCleaners`
+
+### Target Registry authentication projection
+
+- Capability ID: `rainbond.cleanup.installation-registry-auth`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup/kubeidentity/installation_registry_auth.go`
+- 代码路径: `pkg/cleanup/kubeidentity/installation_registry_auth.go`
+- 测试路径: `pkg/cleanup/kubeidentity/installation_registry_auth_test.go::TestInstallationProjectsTargetRegistryCredentialsWithoutReturningThem`
+
+### Read-only target Registry storage projection
+
+- Capability ID: `rainbond.cleanup.installation-registry-mount`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `pkg/cleanup/kubeidentity/installation_registry_mount.go`
+- 代码路径: `pkg/cleanup/kubeidentity/installation_registry_mount.go`
+- 测试路径: `pkg/cleanup/kubeidentity/installation_registry_mount_test.go::TestInstallationMirrorsOnlyTheObservedRegistryVolumeReadOnly`
+
+### Owned installation Registry view
+
+- Capability ID: `rainbond.cleanup.installation-registry-view`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `api/controller/cleanup_installation_registry_view.go`
+- 代码路径: `api/controller/cleanup_installation_registry_view.go`
+- 测试路径: `api/controller/cleanup_installation_registry_view_test.go::TestInstallationRegistryViewUsesOwnedTargetResources`
+
 ### Create scoped cleanup installation resources and preserve existing credentials
 
 - Capability ID: `rainbond.cleanup.installation-resources`
@@ -2332,6 +2377,16 @@
 - 业务入口: `pkg/cleanup/registryproxy.InitializeStorageIdentity`
 - 代码路径: `pkg/cleanup/registryproxy/identity.go`
 - 测试路径: `pkg/cleanup/registryproxy/identity_test.go::TestStorageIdentityIsBoundAndNeverOverwritten`
+
+### Verify platform callbacks without exposing signing keys
+
+- Capability ID: `rainbond.cleanup.system-identity-verification`
+- 状态: `active`
+- 测试类型: `integration`
+- 接口类型: `workflow`
+- 业务入口: `api/controller/cleanup_system_identity.go`
+- 代码路径: `api/controller/cleanup_system_identity.go`
+- 测试路径: `api/controller/cleanup_system_identity_test.go::TestSystemIdentityVerificationDoesNotReturnItsCredential`
 
 ### Persist exact tar task reservation before MQ and retain unknown outcome
 

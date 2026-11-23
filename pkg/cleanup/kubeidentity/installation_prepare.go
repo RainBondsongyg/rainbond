@@ -151,6 +151,15 @@ func EnsureInstallationResources(ctx context.Context, client kubernetes.Interfac
 	if client == nil || len(validation.IsDNS1123Label(systemNamespace)) != 0 {
 		return InstallationScope{}, ErrBinding
 	}
+	// Existing executors may still need durable receipts on this claim. Keep
+	// their journal in place; fresh installations use one claim per node.
+	legacyState, err := client.CoreV1().PersistentVolumeClaims(systemNamespace).Get(ctx, scope.StateClaim, metav1.GetOptions{})
+	if err == nil && legacyState.Status.Phase == corev1.ClaimBound {
+		scope.StatePerNode = false
+	}
+	if err != nil && !apierrors.IsNotFound(err) {
+		return InstallationScope{}, err
+	}
 	if _, err := installationBackend(scope); err != nil {
 		return InstallationScope{}, err
 	}

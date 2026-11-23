@@ -31,8 +31,15 @@ on:
       operator_ref:
         type: string
         default: ""
+      registry_native_image:
+        type: string
+        default: "registry:2.8.3"
   workflow_dispatch:
     inputs:
+      registry_native_image:
+        description: 'Native Registry image used by the platform GC runtime'
+        required: false
+        default: 'registry:2.8.3'
       rainbond_ref:
         description: 'rainbond commit (default: branch)'
         required: false
@@ -148,7 +155,7 @@ jobs:
     environment: release-v6
     strategy:
       matrix:
-        component: [api, chaos, worker, init-probe, mq]
+        component: [api, chaos, worker, init-probe, mq, registry-gc]
         arch: [amd64, arm64]
         exclude:
           - arch: ${{ inputs.platforms == 'linux/amd64' && 'arm64' || 'none' }}
@@ -175,6 +182,15 @@ jobs:
           username: ${{ secrets.DOMESTIC_DOCKER_USERNAME }}
           password: ${{ secrets.DOMESTIC_DOCKER_PASSWORD }}
 
+      - name: Resolve immutable native Registry image
+        if: matrix.component == 'registry-gc'
+        env:
+          REGISTRY_NATIVE_IMAGE: ${{ inputs.registry_native_image || 'registry:2.8.3' }}
+        run: |
+          native_digest="$(docker buildx imagetools inspect "$REGISTRY_NATIVE_IMAGE" --format '{{.Manifest.Digest}}')"
+          [[ "$native_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'REGISTRY_IMAGE=%s@%s\n' "${REGISTRY_NATIVE_IMAGE%%@*}" "$native_digest" >> "$GITHUB_ENV"
+
       - name: Set release description
         run: |
           buildTime=$(date +%F-%H)
@@ -188,6 +204,7 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           build-args: |
             RELEASE_DESC=${{ env.release_desc }}
+            REGISTRY_IMAGE=${{ env.REGISTRY_IMAGE }}
             RAINBOND_ERROR_REPORTING_DSN=${{ secrets.RAINBOND_ERROR_REPORTING_DSN }}
             RAINBOND_ERROR_REPORTING_REGION_DSN=${{ secrets.RAINBOND_ERROR_REPORTING_REGION_DSN }}
             RAINBOND_ERROR_REPORTING_BACKEND_DSN=${{ secrets.RAINBOND_ERROR_REPORTING_BACKEND_DSN }}
@@ -373,7 +390,7 @@ jobs:
 
           # Region components
           if [[ "$BUILD_WHO" == "all" || "$BUILD_WHO" == "region" ]]; then
-            for component in api chaos worker init-probe mq; do
+            for component in api chaos worker init-probe mq registry-gc; do
               echo "Creating manifest for rbd-${component}..."
               docker buildx imagetools create -t rainbond/rbd-${component}:${VERSION} \
                 rainbond/rbd-${component}:${VERSION}-amd64 \

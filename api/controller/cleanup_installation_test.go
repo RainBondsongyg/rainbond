@@ -79,3 +79,20 @@ func TestCleanupInstallationRequiresAnOwnedRegisteredPlugin(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallationConsoleAddressUsesInternalServiceOnlyForItsActualPod(t *testing.T) {
+	ctx := context.Background()
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "console-0", Namespace: "system", UID: "actual-console", Labels: map[string]string{"name": "rbd-app-ui"}}}
+	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "rbd-app-ui", Namespace: "system"}, Spec: corev1.ServiceSpec{Selector: pod.Labels, Ports: []corev1.ServicePort{{Port: 7070, Protocol: corev1.ProtocolTCP}}}}
+	client := fake.NewSimpleClientset(pod, service)
+	request := cleanupInstallationRequest{ConsoleURL: "https://public.console.example", ConsolePodName: pod.Name, ConsolePodUID: "actual-console"}
+	address, err := installationConsoleAddress(ctx, client, "system", request)
+	if err != nil || address != "http://rbd-app-ui.system.svc.cluster.local:7070" {
+		t.Fatal("same-cluster Console was not discovered automatically", address, err)
+	}
+	request.ConsolePodUID = "different-cluster-console"
+	address, err = installationConsoleAddress(ctx, client, "system", request)
+	if err != nil || address != request.ConsoleURL {
+		t.Fatal("remote region was sent to an unrelated local Console", address, err)
+	}
+}

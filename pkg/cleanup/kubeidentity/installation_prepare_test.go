@@ -56,4 +56,10 @@ func TestInstallationPreparesResourcesWithoutManualConfiguration(t *testing.T) {
 	if _, err := EnsureInstallationResources(ctx, client, "system", foreign); err == nil {
 		t.Fatal("a different enterprise adopted the installation")
 	}
+	legacy := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: prepared.StateClaim, Namespace: "system"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
+	client.CoreV1().PersistentVolumeClaims("system").Create(ctx, legacy, metav1.CreateOptions{})
+	adopted, err := EnsureInstallationResources(ctx, client, "system", scope)
+	if err != nil || adopted.StatePerNode {
+		t.Fatal("upgrade abandoned the existing node task journal", err)
+	}
 }
